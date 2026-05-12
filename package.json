@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "api": "python3 -m uvicorn app.main:app --reload --app-dir backend",
+    "build": "npm --prefix frontend run build"
+  }
+}

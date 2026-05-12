@@ -1,0 +1,158 @@
+.escalation-status {
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-lg, 16px);
+  margin: 0.75rem 1.25rem;
+  border-left: 3px solid;
+  animation: fadeUp 0.3s ease;
+}
+
+.escalation-status.layer-2 {
+  border-left-color: #F4A261;
+  background: #fff8f0;
+  border: 1.5px solid rgba(244, 162, 97, 0.3);
+  border-left: 3px solid #F4A261;
+}
+
+.escalation-status.layer-3 {
+  border-left-color: #E07A5F;
+  background: #FEF0EC;
+  border: 1.5px solid rgba(224, 122, 95, 0.3);
+  border-left: 3px solid #E07A5F;
+}
+
+.escalation-status.layer-4 {
+  border-left-color: #C1121F;
+  background: #fff0f0;
+  border: 1.5px solid rgba(193, 18, 31, 0.25);
+  border-left: 3px solid #C1121F;
+}
+
+.escalation-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(43, 45, 66, 0.08);
+}
+
+.badge-container {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.badge-icon.critical { color: #C1121F; }
+.badge-icon.warning  { color: #E07A5F; }
+.badge-icon.info     { color: #F4A261; }
+
+.badge {
+  padding: 0.22rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.badge.yellow { background: rgba(244, 162, 97, 0.2); color: #7a3b0a; }
+.badge.orange { background: rgba(224, 122, 95, 0.2); color: #7a2917; }
+.badge.red    { background: rgba(193, 18, 31, 0.15); color: #7f1d1d; }
+
+.layer-label {
+  font-size: 0.85rem;
+  color: var(--body-text, #4A4A5A);
+  font-weight: 600;
+}
+
+.escalation-acknowledged {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(149, 213, 178, 0.2);
+  border-radius: var(--radius-md, 12px);
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(45, 106, 79, 0.2);
+}
+
+.check-icon { color: #2D6A4F; flex-shrink: 0; margin-top: 2px; }
+
+.acknowledged-text {
+  margin: 0 0 0.2rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #1a4731;
+}
+
+.response-time { margin: 0; font-size: 0.8rem; color: #2D6A4F; }
+
+.escalation-unacknowledged {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(244, 162, 97, 0.15);
+  border-radius: var(--radius-md, 12px);
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(244, 162, 97, 0.3);
+}
+
+.alert-icon { color: #c08434; flex-shrink: 0; margin-top: 2px; }
+.unacknowledged-text { margin: 0 0 0.2rem; font-weight: 700; font-size: 0.88rem; color: #7a3b0a; }
+.time-elapsed { margin: 0; font-size: 0.8rem; color: #a16207; }
+
+.critical-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(224, 122, 95, 0.12);
+  border-left: 3px solid #E07A5F;
+  border-radius: var(--radius-md, 12px);
+  margin-bottom: 0.75rem;
+  color: #7a2917;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.critical-notice svg { flex-shrink: 0; margin-top: 2px; color: #E07A5F; }
+.critical-notice p { margin: 0; }
+
+.system-failure-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 0.95rem;
+  background: rgba(193, 18, 31, 0.07);
+  border: 1.5px solid rgba(193, 18, 31, 0.25);
+  border-radius: var(--radius-md, 12px);
+  margin-bottom: 0.75rem;
+  color: #7f1d1d;
+}
+
+.system-failure-notice svg { flex-shrink: 0; color: #C1121F; margin-top: 2px; }
+.system-failure-notice p { margin: 0; font-size: 0.85rem; font-weight: 500; }
+.system-failure-notice .review-note { margin-top: 0.4rem; font-size: 0.8rem; color: #9a0e18; font-weight: 700; }
+
+.escalation-details {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(43, 45, 66, 0.07);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.detail-item .label { font-size: 0.72rem; color: var(--muted, #6B7280); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.detail-item .value { font-size: 0.88rem; font-weight: 700; color: var(--charcoal, #2B2D42); }
+.detail-item .value.risk-high   { color: #C1121F; }
+.detail-item .value.risk-medium { color: #c08434; }
+.detail-item .value.risk-low    { color: #2D6A4F; }

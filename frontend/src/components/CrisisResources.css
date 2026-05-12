@@ -1,0 +1,117 @@
+.crisis-resources {
+  padding: 1.1rem 1.25rem;
+  border-radius: var(--radius-lg, 16px);
+  margin: 0.75rem 0;
+  background: var(--coral-pale, #FEF0EC);
+  border: 1.5px solid rgba(224, 122, 95, 0.3);
+  animation: fadeUp 0.3s ease;
+}
+
+.crisis-resources.prominent {
+  background: #FEF0EC;
+  border-color: rgba(193, 18, 31, 0.3);
+  padding: 1.5rem;
+  margin: 1rem 0;
+  box-shadow: 0 4px 20px rgba(193, 18, 31, 0.08);
+}
+
+.crisis-resources.risk-high {
+  background: #FEF0EC;
+  border-color: rgba(193, 18, 31, 0.3);
+}
+
+.crisis-resources.risk-medium {
+  background: #fff3e4;
+  border-color: rgba(244, 162, 97, 0.35);
+}
+
+.crisis-resources.risk-low {
+  background: rgba(149, 213, 178, 0.15);
+  border-color: rgba(45, 106, 79, 0.2);
+}
+
+.crisis-header {
+  margin-bottom: 0.85rem;
+}
+
+.crisis-header h3 {
+  margin: 0 0 0.35rem 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #5c2917;
+  font-family: 'DM Serif Display', Georgia, serif;
+}
+
+.urgent-message {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a2317;
+  font-weight: 500;
+}
+
+.crisis-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.75rem 0;
+}
+
+.crisis-button {
+  display: inline-flex;
+  flex-direction: column;
+  padding: 0.55rem 0.85rem;
+  background: #fff;
+  border: 1px solid rgba(224, 122, 95, 0.25);
+  border-radius: var(--radius-md, 12px);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 95px;
+}
+
+.crisis-button:hover {
+  border-color: var(--coral, #E07A5F);
+  background: #fff5f3;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(224, 122, 95, 0.12);
+}
+
+.crisis-button.primary {
+  background: var(--critical, #C1121F);
+  color: #fff;
+  border-color: #9a0e18;
+  font-weight: 700;
+}
+
+.crisis-button.primary:hover {
+  background: #9a0e18;
+  border-color: #7a0b12;
+}
+
+.button-label {
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-bottom: 0.15rem;
+  color: #5c2917;
+}
+
+.crisis-button.primary .button-label { color: #fff; }
+
+.button-description {
+  font-size: 0.72rem;
+  color: var(--muted, #6B7280);
+  line-height: 1.4;
+}
+
+.crisis-button.primary .button-description { color: rgba(255,255,255,0.8); }
+
+.safety-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  color: #5c2917;
+  padding: 0.65rem 0.85rem;
+  background: rgba(255,255,255,0.55);
+  border-radius: var(--radius-md, 12px);
+  line-height: 1.55;
+}

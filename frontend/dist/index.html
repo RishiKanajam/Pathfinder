@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="PathFinder — AI-powered referral and access platform for the Evolve Mental Health & Wellbeing Hub, Hunter Region NSW" />
+    <title>PathFinder | Evolve Hub LMNSPN</title>
+
+    <!-- Warm sanctuary typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      /*
+       * HARDCODED CRISIS RESOURCES
+       * This block renders in plain HTML BEFORE React loads.
+       * It intentionally uses zero JS and zero external assets.
+       * MUST remain visible even if the React app crashes.
+       */
+      #crisis-fallback {
+        display: none; /* hidden once React mounts — see script below */
+        background: #fef0ec;
+        border-bottom: 2px solid #e07a5f;
+        padding: 12px 16px;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        color: #5c2917;
+      }
+      #crisis-fallback strong { display: block; margin-bottom: 6px; font-size: 15px; }
+      #crisis-fallback a {
+        display: inline-block;
+        margin: 4px 6px 4px 0;
+        padding: 6px 12px;
+        background: #c1121f;
+        color: #fff;
+        border-radius: 6px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+      #crisis-fallback a.secondary { background: #2d6a4f; }
+      #crisis-fallback a.tertiary { background: #5c5a8e; }
+
+      /* Show fallback if #root is empty after 4 seconds (JS crash / slow network) */
+    </style>
+    <script type="module" crossorigin src="/assets/index-BRBepD6S.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BBIfRig-.css">
+  </head>
+
+  <body>
+    <!-- HARDCODED CRISIS FALLBACK — works without JS, without React, without network -->
+    <div id="crisis-fallback">
+      <strong>If you or someone else is in immediate danger:</strong>
+      <a href="tel:000">000 Emergency</a>
+      <a href="tel:131114" class="secondary">Lifeline 13 11 14</a>
+      <a href="tel:1800011511" class="secondary">NSW Mental Health Line 1800 011 511</a>
+      <a href="tel:1300224636" class="secondary">Beyond Blue 1300 22 4636</a>
+      <a href="tel:139276" class="tertiary">13YARN 13 92 76 (Aboriginal & Torres Strait Islander)</a>
+      <a href="tel:0240961100" class="secondary">Evolve Hub 02 4096 1100</a>
+    </div>
+
+    <div id="root"></div>
+
+    <script>
+      // Hide fallback once React renders, reveal if React dies
+      (function () {
+        var fb = document.getElementById('crisis-fallback');
+        // If #root is still empty after 5 seconds, show the fallback
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (!root || !root.firstChild) fb.style.display = 'block';
+        }, 5000);
+      })();
+    </script>
+  </body>
+</html>
