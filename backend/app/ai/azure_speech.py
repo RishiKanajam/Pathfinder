@@ -60,8 +60,8 @@ def transcribe(audio_bytes: bytes, content_type: str = "audio/webm") -> dict | N
         f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.{ext}\"\r\nContent-Type: {content_type}\r\n\r\n".encode(),
         audio_bytes,
         f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\nwhisper-1\r\n".encode(),
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\nverbose_json\r\n".encode(),
-        f"--{boundary}--\r\n".encode(),
+        f"\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"response_format\"\r\n\r\njson\r\n".encode(),
+        f"\r\n--{boundary}--\r\n".encode(),
     ]
     body = b"".join(body_parts)
 

@@ -76,6 +76,10 @@ export default function DashboardPage({ activeStaff }) {
   const [activeStatus, setActiveStatus] = useState("new");
   const [selectedReferral, setSelectedReferral] = useState(null);
   const [drawerTab, setDrawerTab] = useState("detail");
+  const [staffSaving, setStaffSaving] = useState({});
+  const [newStaffForm, setNewStaffForm] = useState({ name: "", role: "", email: "" });
+  const [addingStaff, setAddingStaff] = useState(false);
+  const [addStaffError, setAddStaffError] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -134,6 +138,44 @@ export default function DashboardPage({ activeStaff }) {
     setSelectedReferral(updated);
     if (updated.status && updated.status !== activeStatus) {
       setActiveStatus(updated.status);
+    }
+  }
+
+  async function togglePermission(staffId, permission, currentValue) {
+    const key = `${staffId}-${permission}`;
+    setStaffSaving(prev => ({ ...prev, [key]: true }));
+    try {
+      await fetch(`/api/staff/${staffId}/permissions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permission, value: !currentValue, granted_by: activeStaff?.id ?? 1 }),
+      });
+      setStaff(prev => prev.map(s => s.id === staffId ? { ...s, [permission]: !currentValue } : s));
+    } finally {
+      setStaffSaving(prev => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function createStaffMember(e) {
+    e.preventDefault();
+    if (!newStaffForm.name.trim() || !newStaffForm.role.trim()) {
+      setAddStaffError("Name and role are required.");
+      return;
+    }
+    setAddStaffError("");
+    setAddingStaff(true);
+    try {
+      const res = await fetch("/api/staff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newStaffForm, requested_by: activeStaff?.id ?? 1 }),
+      });
+      if (!res.ok) { setAddStaffError("Could not create staff member."); return; }
+      const created = await res.json();
+      setStaff(prev => [...prev, created]);
+      setNewStaffForm({ name: "", role: "", email: "" });
+    } finally {
+      setAddingStaff(false);
     }
   }
 
@@ -521,35 +563,92 @@ export default function DashboardPage({ activeStaff }) {
         </section>
         )}
 
-        {/* Staff roster (CEO only) */}
+        {/* Staff management (CEO only) */}
         {profile.isCEO && (
-        <section className="side-panel" style={{ gridColumn: "span 2" }}>
+        <section className="wide-panel" style={{ gridColumn: "span 4" }}>
           <div className="section-heading">
             <UsersRound size={18} />
-            <h3>Staff roster</h3>
-            <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>{staff.length} members</span>
+            <h3>Staff management</h3>
+            <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>{staff.length} members · CEO only</span>
           </div>
-          <div className="volunteer-list">
-            {staff.map((s) => (
-              <article key={s.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <strong>{s.name}</strong>
-                  <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {s.is_on_call && (
-                      <span className="risk-badge" style={{ background: "var(--green-pale)", color: "var(--green-deep)", fontSize: "0.65rem" }}>on-call</span>
-                    )}
-                    {s.can_handle_high_risk && (
-                      <span className="risk-badge" style={{ background: "rgba(224,122,95,0.15)", color: "#b84b42", fontSize: "0.65rem" }}>high-risk</span>
-                    )}
-                    {s.can_manage_staff && (
-                      <span className="risk-badge" style={{ background: "rgba(77,93,211,0.12)", color: "#3a4ab8", fontSize: "0.65rem" }}>admin</span>
-                    )}
-                  </div>
-                </div>
-                <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{s.role}</span>
-              </article>
-            ))}
+
+          {/* Permission toggles */}
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)", textAlign: "left" }}>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "var(--muted)", fontSize: "0.75rem" }}>Name / Role</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "var(--muted)", fontSize: "0.75rem", textAlign: "center" }}>On-call</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "var(--muted)", fontSize: "0.75rem", textAlign: "center" }}>High-risk cases</th>
+                  <th style={{ padding: "0.5rem 0.75rem", fontWeight: 600, color: "var(--muted)", fontSize: "0.75rem", textAlign: "center" }}>Admin / manage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map((s) => (
+                  <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>
+                      <strong style={{ display: "block" }}>{s.name}</strong>
+                      <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>{s.role}</span>
+                    </td>
+                    {[
+                      { perm: "is_on_call",           val: s.is_on_call },
+                      { perm: "can_handle_high_risk",  val: s.can_handle_high_risk },
+                      { perm: "can_manage_staff",      val: s.can_manage_staff },
+                    ].map(({ perm, val }) => {
+                      const saving = staffSaving[`${s.id}-${perm}`];
+                      return (
+                        <td key={perm} style={{ padding: "0.6rem 0.75rem", textAlign: "center" }}>
+                          <button
+                            onClick={() => togglePermission(s.id, perm, val)}
+                            disabled={saving}
+                            style={{
+                              width: 40, height: 22, borderRadius: 999, border: "none", cursor: saving ? "wait" : "pointer",
+                              background: val ? "var(--green-mid)" : "rgba(43,45,66,0.15)",
+                              transition: "background 0.2s", position: "relative", flexShrink: 0,
+                            }}
+                            title={val ? `Revoke ${perm}` : `Grant ${perm}`}
+                          >
+                            <span style={{
+                              display: "block", width: 16, height: 16, borderRadius: "50%", background: "#fff",
+                              position: "absolute", top: 3, left: val ? 21 : 3, transition: "left 0.2s",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                            }} />
+                          </button>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+
+          {/* Add staff form */}
+          <form onSubmit={createStaffMember} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", padding: "1rem 0 0.25rem", borderTop: "1px solid var(--border)", marginTop: "0.75rem" }}>
+            <input
+              placeholder="Full name *"
+              value={newStaffForm.name}
+              onChange={e => setNewStaffForm(p => ({ ...p, name: e.target.value }))}
+              style={{ flex: "1 1 140px", padding: "0.45rem 0.75rem", border: "1px solid var(--border)", borderRadius: 8, fontSize: "0.85rem" }}
+            />
+            <input
+              placeholder="Role *"
+              value={newStaffForm.role}
+              onChange={e => setNewStaffForm(p => ({ ...p, role: e.target.value }))}
+              style={{ flex: "1 1 140px", padding: "0.45rem 0.75rem", border: "1px solid var(--border)", borderRadius: 8, fontSize: "0.85rem" }}
+            />
+            <input
+              placeholder="Email"
+              type="email"
+              value={newStaffForm.email}
+              onChange={e => setNewStaffForm(p => ({ ...p, email: e.target.value }))}
+              style={{ flex: "1 1 160px", padding: "0.45rem 0.75rem", border: "1px solid var(--border)", borderRadius: 8, fontSize: "0.85rem" }}
+            />
+            <button type="submit" className="primary-button" disabled={addingStaff} style={{ flexShrink: 0 }}>
+              {addingStaff ? "Adding…" : "+ Add staff member"}
+            </button>
+            {addStaffError && <span style={{ color: "#b84b42", fontSize: "0.8rem", width: "100%" }}>{addStaffError}</span>}
+          </form>
         </section>
         )}
 
