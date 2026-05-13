@@ -69,6 +69,13 @@ export default function LiveMonitor({ activeStaff }) {
     return () => clearInterval(t);
   }, [fetchList]);
 
+  // Auto-select the first (highest-priority) conversation on load
+  useEffect(() => {
+    if (conversations.length > 0 && !selected) {
+      fetchDetail(conversations[0].id);
+    }
+  }, [conversations, selected, fetchDetail]);
+
   useEffect(() => {
     if (!selected) return;
     const t = setInterval(() => fetchDetail(selected.id), POLL_MS);
