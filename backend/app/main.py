@@ -105,7 +105,7 @@ async def text_to_speech(request: Request):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="No text provided")
 
-    payload = json.dumps({"model": "tts-1", "input": text, "voice": "nova", "response_format": "mp3"}).encode()
+    payload = json.dumps({"model": "tts-1", "input": text, "voice": "shimmer", "response_format": "mp3"}).encode()
     req = urllib.request.Request(
         "https://api.openai.com/v1/audio/speech",
         data=payload,
