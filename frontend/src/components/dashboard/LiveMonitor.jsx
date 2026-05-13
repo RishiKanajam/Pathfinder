@@ -11,7 +11,7 @@ import {
 
 const RISK_COLOR = { low: "#52b788", medium: "#F4A261", high: "#E07A5F" };
 const RISK_TEXT  = { low: "#1a4731", medium: "#7a3b0a", high: "#fff" };
-const POLL_MS    = 10_000;
+const POLL_MS    = 5_000;
 
 function isBusinessHours() {
   const h = new Date().getHours();
@@ -76,11 +76,21 @@ export default function LiveMonitor({ activeStaff }) {
     }
   }, [conversations, selected, fetchDetail]);
 
+  // Refresh selected conversation detail on every list poll cycle
   useEffect(() => {
     if (!selected) return;
     const t = setInterval(() => fetchDetail(selected.id), POLL_MS);
     return () => clearInterval(t);
   }, [selected, fetchDetail]);
+
+  // When list updates and selected conv has new messages, refresh detail silently
+  useEffect(() => {
+    if (!selected) return;
+    const summary = conversations.find(c => c.id === selected.id);
+    if (summary && summary.message_count > (selected.messages?.length || 0)) {
+      fetchDetail(selected.id);
+    }
+  }, [conversations]); // eslint-disable-line
 
   async function sendJoin(e) {
     e?.preventDefault();
@@ -155,7 +165,10 @@ export default function LiveMonitor({ activeStaff }) {
           </div>
         )}
 
-        {conversations.map((c) => (
+        {conversations.map((c) => {
+          const isNew = c.latest_message_at &&
+            (Date.now() - new Date(c.latest_message_at).getTime()) < 60_000;
+          return (
           <button key={c.id}
             className={`convo-card${selected?.id === c.id ? " selected" : ""}${c.peak_risk_level === "high" ? " urgent" : ""}`}
             onClick={() => fetchDetail(c.id)}>
@@ -165,6 +178,7 @@ export default function LiveMonitor({ activeStaff }) {
                 <span className="convo-id">#{c.id}</span>
                 {c.is_after_hours && <Moon size={10} style={{ color: "var(--muted)" }} />}
                 {c.staff_took_over && <Shield size={10} style={{ color: "var(--green-deep)" }} />}
+                {isNew && <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0.05rem 0.35rem", borderRadius: 999, background: "#2d6a4f", color: "#fff", letterSpacing: "0.04em" }}>NEW</span>}
               </div>
               <span className="convo-time">{timeSince(c.latest_message_at)}</span>
             </div>
@@ -181,7 +195,8 @@ export default function LiveMonitor({ activeStaff }) {
               <span className="muted" style={{ fontSize: "0.7rem" }}>{c.message_count} msgs</span>
             </div>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* ── Detail pane ── */}

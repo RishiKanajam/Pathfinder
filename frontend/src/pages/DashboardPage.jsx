@@ -81,6 +81,7 @@ export default function DashboardPage({ activeStaff }) {
   const [addingStaff, setAddingStaff] = useState(false);
   const [addStaffError, setAddStaffError] = useState("");
 
+  // Initial full load
   useEffect(() => {
     Promise.all([
       api.referrals(),
@@ -97,6 +98,18 @@ export default function DashboardPage({ activeStaff }) {
       setOvernightSummary(summary);
       setEscalationMetrics(metrics);
     }).catch(() => {});
+  }, []);
+
+  // Poll referrals + analytics every 8s so new chat-triggered cases appear immediately
+  useEffect(() => {
+    const poll = setInterval(async () => {
+      try {
+        const [refs, anal] = await Promise.all([api.referrals(), api.analytics()]);
+        setReferrals(refs);
+        setAnalytics(anal);
+      } catch {}
+    }, 8000);
+    return () => clearInterval(poll);
   }, []);
 
   const priorityQueue = useMemo(
