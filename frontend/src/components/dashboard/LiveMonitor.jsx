@@ -25,7 +25,9 @@ function timeSince(iso) {
   const m = Math.floor((Date.now() - new Date(iso)) / 60000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 export default function LiveMonitor({ activeStaff }) {

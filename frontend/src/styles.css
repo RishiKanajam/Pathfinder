@@ -2264,9 +2264,8 @@ main { padding: clamp(1rem, 2.5vw, 1.75rem) clamp(1rem, 3vw, 2.5rem); flex: 1; }
 /* ── Live Monitor ──────────────────────────────────────────── */
 .live-monitor {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  min-height: 480px;
-  max-height: 620px;
+  grid-template-columns: 300px 1fr;
+  height: 640px;
 }
 
 .monitor-list {
@@ -2276,6 +2275,7 @@ main { padding: clamp(1rem, 2.5vw, 1.75rem) clamp(1rem, 3vw, 2.5rem); flex: 1; }
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-mid) transparent;
+  height: 100%;
 }
 
 .monitor-list-header {

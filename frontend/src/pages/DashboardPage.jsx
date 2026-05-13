@@ -489,12 +489,15 @@ export default function DashboardPage({ activeStaff }) {
         </section>
 
         {/* Volunteer roster */}
+        {profile.showVolunteers && (
         <section className="side-panel" style={{ gridColumn: "span 2" }}>
           <div className="section-heading">
             <UsersRound size={18} />
             <h3>Volunteer roster</h3>
+            <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>{volunteers.length} active</span>
           </div>
           <div className="volunteer-list">
+            {volunteers.length === 0 && <p className="muted" style={{ padding: "1rem", fontSize: "0.85rem" }}>No volunteers rostered.</p>}
             {volunteers.map((vol) => (
               <article key={vol.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -516,6 +519,39 @@ export default function DashboardPage({ activeStaff }) {
             ))}
           </div>
         </section>
+        )}
+
+        {/* Staff roster (CEO only) */}
+        {profile.isCEO && (
+        <section className="side-panel" style={{ gridColumn: "span 2" }}>
+          <div className="section-heading">
+            <UsersRound size={18} />
+            <h3>Staff roster</h3>
+            <span className="muted" style={{ marginLeft: "auto", fontSize: "0.78rem" }}>{staff.length} members</span>
+          </div>
+          <div className="volunteer-list">
+            {staff.map((s) => (
+              <article key={s.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <strong>{s.name}</strong>
+                  <div style={{ display: "flex", gap: "0.3rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {s.is_on_call && (
+                      <span className="risk-badge" style={{ background: "var(--green-pale)", color: "var(--green-deep)", fontSize: "0.65rem" }}>on-call</span>
+                    )}
+                    {s.can_handle_high_risk && (
+                      <span className="risk-badge" style={{ background: "rgba(224,122,95,0.15)", color: "#b84b42", fontSize: "0.65rem" }}>high-risk</span>
+                    )}
+                    {s.can_manage_staff && (
+                      <span className="risk-badge" style={{ background: "rgba(77,93,211,0.12)", color: "#3a4ab8", fontSize: "0.65rem" }}>admin</span>
+                    )}
+                  </div>
+                </div>
+                <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>{s.role}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+        )}
 
         {/* Response times */}
         <section className="chart-panel" style={{ gridColumn: "span 2" }}>
