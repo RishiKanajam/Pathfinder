@@ -70,17 +70,19 @@ export default function ChatPage() {
   const [voiceState, setVoiceState]     = useState("idle"); // listening | thinking | speaking
   const [amplitude, setAmplitude]       = useState(0);
 
-  const endRef        = useRef(null);
-  const inputRef      = useRef(null);
-  const convIdRef     = useRef(null);
-  const voiceModeRef  = useRef(false);
-  const streamRef     = useRef(null);
-  const recorderRef   = useRef(null);
-  const chunksRef     = useRef([]);
-  const vadRef        = useRef(null);
-  const audioCtxRef   = useRef(null);
-  const currentAudio  = useRef(null);
-  const accumulatedRef = useRef(""); // track full AI reply for TTS
+  const endRef         = useRef(null);
+  const inputRef       = useRef(null);
+  const convIdRef      = useRef(null);
+  const voiceModeRef   = useRef(false);
+  const streamRef      = useRef(null);
+  const recorderRef    = useRef(null);
+  const chunksRef      = useRef([]);
+  const vadRef         = useRef(null);
+  const audioCtxRef    = useRef(null);
+  const currentAudio   = useRef(null);
+  const accumulatedRef = useRef("");
+  const listeningRef   = useRef(false); // prevent re-entrant cycles
+  const maxTimerRef    = useRef(null);  // 20s hard stop
 
   useEffect(() => { convIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
@@ -190,12 +192,23 @@ export default function ChatPage() {
   // ── Voice mode ─────────────────────────────────────────────
 
   function stopVoiceResources() {
+    listeningRef.current = false;
     clearInterval(vadRef.current);
-    recorderRef.current?.state !== "inactive" && recorderRef.current?.stop();
+    clearTimeout(maxTimerRef.current);
+    try { if (recorderRef.current?.state === "recording") recorderRef.current.stop(); } catch {}
     streamRef.current?.getTracks().forEach(t => t.stop());
     currentAudio.current?.pause();
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
+  }
+
+  // Manual stop — user taps "Send now" button in voice mode
+  function manualStopListening() {
+    if (recorderRef.current?.state === "recording") {
+      clearInterval(vadRef.current);
+      clearTimeout(maxTimerRef.current);
+      recorderRef.current.stop();
+    }
   }
 
   async function enterVoiceMode() {
@@ -218,8 +231,14 @@ export default function ChatPage() {
   }
 
   async function startListeningCycle() {
-    if (!voiceModeRef.current) return;
-    stopVoiceResources();
+    if (!voiceModeRef.current || listeningRef.current) return;
+    listeningRef.current = true;
+    clearInterval(vadRef.current);
+    clearTimeout(maxTimerRef.current);
+    try { if (recorderRef.current?.state === "recording") recorderRef.current.stop(); } catch {}
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
     setVoiceState("listening");
     setAmplitude(0);
 
@@ -252,21 +271,27 @@ export default function ChatPage() {
     recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
 
     recorder.onstop = async () => {
+      listeningRef.current = false;
       stream.getTracks().forEach(t => t.stop());
       audioCtx.close().catch(() => {});
       if (!voiceModeRef.current) return;
       const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
-      if (blob.size < 1500) { await startListeningCycle(); return; }
+      if (blob.size < 800) { await startListeningCycle(); return; }
       setVoiceState("thinking");
       await transcribeAndSend(blob, mimeType);
     };
 
     recorder.start(100);
 
+    // 20s hard-stop so it never gets stuck
+    maxTimerRef.current = setTimeout(() => {
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    }, 20000);
+
     // VAD — silence detection
     const data = new Float32Array(analyser.fftSize);
-    const THRESHOLD = 0.013;
-    const SILENCE_MS = 1400;
+    const THRESHOLD = 0.010; // lowered — more sensitive
+    const SILENCE_MS = 1200; // shorter pause = faster response
     let hasSpeech = false;
     let lastSpeech = Date.now();
 
@@ -274,14 +299,15 @@ export default function ChatPage() {
       if (!voiceModeRef.current) { clearInterval(vadRef.current); return; }
       analyser.getFloatTimeDomainData(data);
       const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length);
-      setAmplitude(Math.min(rms * 18, 1));
+      setAmplitude(Math.min(rms * 20, 1));
 
       if (rms > THRESHOLD) {
         hasSpeech = true;
         lastSpeech = Date.now();
       } else if (hasSpeech && Date.now() - lastSpeech > SILENCE_MS) {
         clearInterval(vadRef.current);
-        recorder.stop();
+        clearTimeout(maxTimerRef.current);
+        if (recorderRef.current?.state === "recording") recorderRef.current.stop();
       }
     }, 80);
   }
@@ -402,7 +428,13 @@ export default function ChatPage() {
                   : voiceState === "thinking" ? "Thinking…"
                   : "Speaking…"}
               </p>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
+                {voiceState === "listening" && (
+                  <button className="primary-button" style={{ fontSize: "0.8rem", padding: "0.4rem 0.9rem" }}
+                    onClick={manualStopListening}>
+                    Send now
+                  </button>
+                )}
                 {voiceState === "speaking" && (
                   <button className="quiet-button" style={{ fontSize: "0.8rem" }}
                     onClick={() => { currentAudio.current?.pause(); startListeningCycle(); }}>
