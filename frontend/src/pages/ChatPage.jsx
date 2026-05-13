@@ -66,30 +66,26 @@ export default function ChatPage() {
   const [voiceError, setVoiceError]           = useState("");
 
   // Voice mode
-  const [voiceMode, setVoiceMode]       = useState(false);
-  const [voiceState, setVoiceState]     = useState("idle"); // listening | thinking | speaking
-  const [amplitude, setAmplitude]       = useState(0);
+  const [voiceMode, setVoiceMode]         = useState(false);
+  const [voiceState, setVoiceState]       = useState("idle"); // listening | thinking | speaking
+  const [interimText, setInterimText]     = useState(""); // live transcript preview
 
-  const endRef         = useRef(null);
-  const inputRef       = useRef(null);
-  const convIdRef      = useRef(null);
-  const voiceModeRef   = useRef(false);
-  const streamRef      = useRef(null);
-  const recorderRef    = useRef(null);
-  const chunksRef      = useRef([]);
-  const vadRef         = useRef(null);
-  const audioCtxRef    = useRef(null);
-  const currentAudio   = useRef(null);
-  const accumulatedRef = useRef("");
-  const listeningRef   = useRef(false); // prevent re-entrant cycles
-  const maxTimerRef    = useRef(null);  // 20s hard stop
+  const endRef          = useRef(null);
+  const inputRef        = useRef(null);
+  const convIdRef       = useRef(null);
+  const voiceModeRef    = useRef(false);
+  const recognitionRef  = useRef(null);  // Web Speech API instance
+  const currentAudio    = useRef(null);  // TTS playback
+  const accumulatedRef  = useRef("");
+  const voiceStateRef   = useRef("idle");
 
   useEffect(() => { convIdRef.current = conversationId; }, [conversationId]);
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
+  useEffect(() => { voiceStateRef.current = voiceState; }, [voiceState]);
 
   useEffect(() => {
     setAfterHours(new Date().getHours() < 9 || new Date().getHours() >= 17);
-    return () => stopVoiceResources();
+    return () => stopRecognition();
   }, []);
 
   useEffect(() => {
@@ -189,159 +185,92 @@ export default function ChatPage() {
     }
   }
 
-  // ── Voice mode ─────────────────────────────────────────────
+  // ── Voice mode (Web Speech API + OpenAI TTS) ───────────────
 
-  function stopVoiceResources() {
-    listeningRef.current = false;
-    clearInterval(vadRef.current);
-    clearTimeout(maxTimerRef.current);
-    try { if (recorderRef.current?.state === "recording") recorderRef.current.stop(); } catch {}
-    streamRef.current?.getTracks().forEach(t => t.stop());
+  function stopRecognition() {
+    try { recognitionRef.current?.stop(); } catch {}
     currentAudio.current?.pause();
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-  }
-
-  // Manual stop — user taps "Send now" button in voice mode
-  function manualStopListening() {
-    if (recorderRef.current?.state === "recording") {
-      clearInterval(vadRef.current);
-      clearTimeout(maxTimerRef.current);
-      recorderRef.current.stop();
-    }
-  }
-
-  async function enterVoiceMode() {
-    setVoiceError("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setVoiceError("Microphone not supported in this browser.");
-      return;
-    }
-    setVoiceMode(true);
-    voiceModeRef.current = true;
-    await startListeningCycle();
   }
 
   function exitVoiceMode() {
     voiceModeRef.current = false;
     setVoiceMode(false);
     setVoiceState("idle");
-    setAmplitude(0);
-    stopVoiceResources();
+    setInterimText("");
+    stopRecognition();
   }
 
-  async function startListeningCycle() {
-    if (!voiceModeRef.current || listeningRef.current) return;
-    listeningRef.current = true;
-    clearInterval(vadRef.current);
-    clearTimeout(maxTimerRef.current);
-    try { if (recorderRef.current?.state === "recording") recorderRef.current.stop(); } catch {}
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    setVoiceState("listening");
-    setAmplitude(0);
+  function startRecognitionCycle() {
+    if (!voiceModeRef.current) return;
 
-    let stream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-      });
-    } catch {
-      exitVoiceMode();
-      setVoiceError("Microphone access denied.");
-      return;
-    }
-    streamRef.current = stream;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
 
-    // AudioContext for VAD
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const audioCtx = new AudioCtx();
-    audioCtxRef.current = audioCtx;
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
-    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    const rec = new SR();
+    rec.lang            = "en-AU";
+    rec.continuous      = false;   // auto-stops after a pause — native VAD
+    rec.interimResults  = true;
+    rec.maxAlternatives = 1;
+    recognitionRef.current = rec;
 
-    // Recorder
-    const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
-      .find(t => MediaRecorder.isTypeSupported(t)) || "";
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-    recorderRef.current = recorder;
-    chunksRef.current = [];
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-
-    recorder.onstop = async () => {
-      listeningRef.current = false;
-      stream.getTracks().forEach(t => t.stop());
-      audioCtx.close().catch(() => {});
-      if (!voiceModeRef.current) return;
-      const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
-      if (blob.size < 800) { await startListeningCycle(); return; }
-      setVoiceState("thinking");
-      await transcribeAndSend(blob, mimeType);
+    rec.onstart = () => {
+      setVoiceState("listening");
+      setInterimText("");
     };
 
-    recorder.start(100);
-
-    // Resume AudioContext — required on some browsers after user gesture
-    if (audioCtx.state === "suspended") await audioCtx.resume();
-
-    // 25s hard-stop so it never gets stuck listening forever
-    maxTimerRef.current = setTimeout(() => {
-      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-    }, 25000);
-
-    // VAD — use frequency domain (much more reliable for speech than time domain RMS)
-    const freqData = new Uint8Array(analyser.frequencyBinCount);
-    const SPEECH_THRESHOLD = 20;  // 0–255 frequency average; speech ~30+, silence ~5–15
-    const SILENCE_MS = 1200;
-    let hasSpeech = false;
-    let lastSpeech = Date.now();
-
-    vadRef.current = setInterval(() => {
-      if (!voiceModeRef.current) { clearInterval(vadRef.current); return; }
-      analyser.getByteFrequencyData(freqData);
-      // Average energy across speech-relevant frequency bands (300Hz–3400Hz)
-      const binStart = Math.floor(300  / (audioCtx.sampleRate / analyser.fftSize));
-      const binEnd   = Math.floor(3400 / (audioCtx.sampleRate / analyser.fftSize));
-      let sum = 0;
-      for (let i = binStart; i <= Math.min(binEnd, freqData.length - 1); i++) sum += freqData[i];
-      const energy = sum / Math.max(binEnd - binStart, 1);
-
-      setAmplitude(Math.min(energy / 60, 1)); // 0–1 for animation
-
-      if (energy > SPEECH_THRESHOLD) {
-        hasSpeech = true;
-        lastSpeech = Date.now();
-      } else if (hasSpeech && Date.now() - lastSpeech > SILENCE_MS) {
-        clearInterval(vadRef.current);
-        clearTimeout(maxTimerRef.current);
-        if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    rec.onresult = (e) => {
+      let interim = "";
+      let final   = "";
+      for (const result of e.results) {
+        if (result.isFinal) final   += result[0].transcript;
+        else                interim += result[0].transcript;
       }
-    }, 80);
+      setInterimText(interim || final);
+      if (final.trim()) {
+        setInterimText("");
+        rec.onend = null; // prevent auto-restart while we process
+        sendMessage(final.trim());
+      }
+    };
+
+    rec.onerror = (e) => {
+      // "no-speech" is normal — just restart
+      if (e.error === "no-speech" && voiceModeRef.current) {
+        startRecognitionCycle();
+      } else if (e.error !== "aborted") {
+        setVoiceError(`Voice error: ${e.error}. Try Chrome if issues persist.`);
+        exitVoiceMode();
+      }
+    };
+
+    // Auto-restart after each utterance (fires when rec stops naturally)
+    rec.onend = () => {
+      if (voiceModeRef.current && voiceStateRef.current === "listening") {
+        startRecognitionCycle();
+      }
+    };
+
+    try { rec.start(); } catch { /* already started */ }
   }
 
-  async function transcribeAndSend(blob, mimeType) {
-    try {
-      const res = await fetch(`${API}/transcribe`, {
-        method: "POST",
-        headers: { "Content-Type": mimeType || "audio/webm" },
-        body: blob,
-      });
-      const data = await res.json();
-      if (data.text?.trim()) {
-        await sendMessage(data.text.trim());
-      } else {
-        await startListeningCycle();
-      }
-    } catch {
-      if (voiceModeRef.current) await startListeningCycle();
+  function enterVoiceMode() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceError("Voice chat requires Chrome or Safari.");
+      return;
     }
+    setVoiceError("");
+    setVoiceMode(true);
+    voiceModeRef.current = true;
+    startRecognitionCycle();
   }
 
   async function speakReply(text) {
     if (!voiceModeRef.current) return;
     setVoiceState("speaking");
+    // Pause recognition while AI is speaking (avoid feedback loop)
+    try { recognitionRef.current?.stop(); } catch {}
+
     try {
       const res = await fetch(`${API}/tts`, {
         method: "POST",
@@ -350,13 +279,19 @@ export default function ChatPage() {
       });
       if (!res.ok) throw new Error();
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const url  = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudio.current = audio;
-      await new Promise(resolve => { audio.onended = resolve; audio.onerror = resolve; audio.play().catch(resolve); });
+      await new Promise(resolve => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        audio.play().catch(resolve);
+      });
       URL.revokeObjectURL(url);
-    } catch { /* skip TTS, continue */ }
-    if (voiceModeRef.current) await startListeningCycle();
+    } catch { /* TTS failed — continue anyway */ }
+
+    // Resume listening after AI finishes speaking
+    if (voiceModeRef.current) startRecognitionCycle();
   }
 
   function handleKeyDown(e) {
@@ -405,13 +340,13 @@ export default function ChatPage() {
               </div>
             </div>
           ))}
-          {/* Voice transcribing indicator — shows in message list between turns */}
-          {voiceMode && voiceState === "thinking" && (
+          {/* Voice processing indicator between turns */}
+          {voiceMode && voiceState === "thinking" && !streaming && (
             <div className="message-row ai">
               <div className="avatar ai-avatar"><Loader2 size={16} className="spin" /></div>
               <div>
                 <div className="message-bubble" style={{ background: "rgba(45,106,79,0.06)", color: "var(--muted)", fontSize: "0.82rem" }}>
-                  Transcribing your message…
+                  Got it — thinking…
                 </div>
               </div>
             </div>
@@ -441,23 +376,26 @@ export default function ChatPage() {
             /* ── Voice mode UI ── */
             <div className="voice-mode-panel" style={{ paddingTop: "0.75rem", paddingBottom: "0.25rem" }}>
               <div className={`voice-orb voice-orb-${voiceState}`}>
-                <VoiceBars state={voiceState} amplitude={amplitude} />
+                <VoiceBars state={voiceState} amplitude={voiceState === "listening" ? 0.6 : 0} />
               </div>
-              <p className="voice-state-label">
-                {voiceState === "listening" ? "Listening…"
-                  : voiceState === "thinking" ? "Thinking…"
-                  : "Speaking…"}
-              </p>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center" }}>
-                {voiceState === "listening" && (
-                  <button className="primary-button" style={{ fontSize: "0.8rem", padding: "0.4rem 0.9rem" }}
-                    onClick={manualStopListening}>
-                    Send now
-                  </button>
-                )}
+
+              {/* Live interim transcript */}
+              {interimText ? (
+                <p style={{ fontSize: "0.85rem", color: "var(--body-text)", margin: 0, textAlign: "center", maxWidth: 260, fontStyle: "italic" }}>
+                  "{interimText}"
+                </p>
+              ) : (
+                <p className="voice-state-label">
+                  {voiceState === "listening" ? "Listening — just talk"
+                    : voiceState === "thinking" ? "Processing…"
+                    : "Speaking…"}
+                </p>
+              )}
+
+              <div style={{ display: "flex", gap: "0.5rem" }}>
                 {voiceState === "speaking" && (
                   <button className="quiet-button" style={{ fontSize: "0.8rem" }}
-                    onClick={() => { currentAudio.current?.pause(); startListeningCycle(); }}>
+                    onClick={() => { currentAudio.current?.pause(); startRecognitionCycle(); }}>
                     Interrupt
                   </button>
                 )}
