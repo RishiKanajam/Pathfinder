@@ -709,15 +709,29 @@ def create_chat_turn(message: str, conversation_id: int | None = None, ai_reply:
         # Fallback replies (used when Azure OpenAI is not configured)
         ai_reply = _fallback_chat_reply(message, assessment)
 
+    _RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
+
     if conversation_id is None:
         conversation_id = next(_conversation_ids)
         CONVERSATIONS.append({
             "id": conversation_id, "referral_id": None,
-            "channel": "chat", "is_after_hours": is_after_hours(), "messages": [],
+            "channel": "chat", "is_after_hours": is_after_hours(),
+            "peak_risk_level": "low", "messages": [],
         })
 
     conversation = next((c for c in CONVERSATIONS if c["id"] == conversation_id), None)
     if conversation:
+        # Risk only ever escalates mid-conversation — never drops
+        peak = conversation.get("peak_risk_level", "low")
+        if _RISK_ORDER.get(assessment.level, 0) < _RISK_ORDER.get(peak, 0):
+            assessment.level = peak
+            assessment.escalation_required = (peak == "high")
+            assessment.flags.append(
+                f"Risk held at {peak} — crisis language was detected earlier in this conversation"
+            )
+        else:
+            conversation["peak_risk_level"] = assessment.level
+
         now = _now()
         conversation["messages"].append({"role": "client", "content": message, "created_at": now})
         conversation["messages"].append({"role": "ai",    "content": ai_reply,  "created_at": now})
@@ -729,6 +743,37 @@ def create_chat_turn(message: str, conversation_id: int | None = None, ai_reply:
         escalation_status = {**escalation_log,
                               "staff_notified": notify_result.get("sent_to", []),
                               "notification_methods": notify_result.get("methods", [])}
+
+        # Auto-create a pipeline referral for high-risk chats so staff see it immediately
+        if conversation and not conversation.get("referral_id"):
+            client_msgs = [m["content"] for m in conversation.get("messages", []) if m["role"] == "client"]
+            situation = " … ".join(client_msgs[-4:]) if client_msgs else message
+            auto_ref = {
+                "id": next(_referral_ids),
+                "client_name": "Chat — anonymous",
+                "referrer_name": "PathFinder chatbot",
+                "referrer_type": "self",
+                "referrer_contact": "",
+                "source_tag": "chat-widget",
+                "suburb": "",
+                "situation": situation,
+                "risk_level": assessment.level,
+                "risk_score": assessment.score,
+                "status": "new",
+                "assigned_to": 3,
+                "matched_program": matches[0].id if matches else None,
+                "created_at": _now(),
+                "ai_assessment": {
+                    "summary": assessment.summary,
+                    "flags": assessment.flags,
+                    "emotions": assessment.emotions,
+                    "matches": [m.__dict__ for m in matches],
+                },
+            }
+            REFERRALS.insert(0, auto_ref)
+            conversation["referral_id"] = auto_ref["id"]
+            escalation_log["referral_id"] = auto_ref["id"]
+            escalation_status["referral_id"] = auto_ref["id"]
 
     return {
         "conversation_id": conversation_id,
