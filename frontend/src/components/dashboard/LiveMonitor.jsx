@@ -39,7 +39,9 @@ export default function LiveMonitor({ activeStaff }) {
   const [joining, setJoining]             = useState(false);
   const [notifStatus, setNotifStatus]     = useState(null); // { text, ok }
   const [lastRefresh, setLastRefresh]     = useState(null);
-  const endRef = useRef(null);
+  const endRef      = useRef(null);
+  const msgPaneRef  = useRef(null); // scroll within pane, not whole page
+  const initialLoad = useRef(true);
 
   const fetchList = useCallback(async () => {
     try {
@@ -56,12 +58,19 @@ export default function LiveMonitor({ activeStaff }) {
     } finally { setLoading(false); }
   }, []);
 
-  const fetchDetail = useCallback(async (id) => {
+  // scroll ONLY within the message pane — never hijack the page
+  const scrollMsgs = useCallback(() => {
+    if (msgPaneRef.current) {
+      msgPaneRef.current.scrollTop = msgPaneRef.current.scrollHeight;
+    }
+  }, []);
+
+  const fetchDetail = useCallback(async (id, autoScroll = false) => {
     const r = await fetch(`/api/conversations/${id}`);
     if (!r.ok) return;
     setSelected(await r.json());
-    setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 60);
-  }, []);
+    if (autoScroll) setTimeout(scrollMsgs, 60);
+  }, [scrollMsgs]);
 
   useEffect(() => {
     fetchList();
@@ -69,26 +78,20 @@ export default function LiveMonitor({ activeStaff }) {
     return () => clearInterval(t);
   }, [fetchList]);
 
-  // Auto-select the first (highest-priority) conversation on load
+  // Auto-select first conversation on FIRST load only
   useEffect(() => {
-    if (conversations.length > 0 && !selected) {
-      fetchDetail(conversations[0].id);
+    if (initialLoad.current && conversations.length > 0 && !selected) {
+      initialLoad.current = false;
+      fetchDetail(conversations[0].id, false); // no scroll on auto-select
     }
   }, [conversations, selected, fetchDetail]);
 
-  // Refresh selected conversation detail on every list poll cycle
-  useEffect(() => {
-    if (!selected) return;
-    const t = setInterval(() => fetchDetail(selected.id), POLL_MS);
-    return () => clearInterval(t);
-  }, [selected, fetchDetail]);
-
-  // When list updates and selected conv has new messages, refresh detail silently
+  // Silently refresh selected detail when new messages arrive
   useEffect(() => {
     if (!selected) return;
     const summary = conversations.find(c => c.id === selected.id);
     if (summary && summary.message_count > (selected.messages?.length || 0)) {
-      fetchDetail(selected.id);
+      fetchDetail(selected.id, false); // no scroll on background refresh
     }
   }, [conversations]); // eslint-disable-line
 
@@ -171,7 +174,7 @@ export default function LiveMonitor({ activeStaff }) {
           return (
           <button key={c.id}
             className={`convo-card${selected?.id === c.id ? " selected" : ""}${c.peak_risk_level === "high" ? " urgent" : ""}`}
-            onClick={() => fetchDetail(c.id)}>
+            onClick={() => fetchDetail(c.id, true)}>
             <div className="convo-card-top">
               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: RISK_COLOR[c.peak_risk_level], display: "inline-block", flexShrink: 0 }} />
@@ -286,7 +289,7 @@ export default function LiveMonitor({ activeStaff }) {
             )}
 
             {/* Messages — clean layout */}
-            <div className="monitor-messages" ref={endRef}>
+            <div className="monitor-messages" ref={msgPaneRef}>
               {(selected.messages || []).map((msg, i) => {
                 const isClient = msg.role === "client";
                 const isStaff  = msg.role === "staff";

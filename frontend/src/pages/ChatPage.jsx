@@ -283,25 +283,34 @@ export default function ChatPage() {
 
     recorder.start(100);
 
-    // 20s hard-stop so it never gets stuck
+    // Resume AudioContext — required on some browsers after user gesture
+    if (audioCtx.state === "suspended") await audioCtx.resume();
+
+    // 25s hard-stop so it never gets stuck listening forever
     maxTimerRef.current = setTimeout(() => {
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-    }, 20000);
+    }, 25000);
 
-    // VAD — silence detection
-    const data = new Float32Array(analyser.fftSize);
-    const THRESHOLD = 0.010; // lowered — more sensitive
-    const SILENCE_MS = 1200; // shorter pause = faster response
+    // VAD — use frequency domain (much more reliable for speech than time domain RMS)
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    const SPEECH_THRESHOLD = 20;  // 0–255 frequency average; speech ~30+, silence ~5–15
+    const SILENCE_MS = 1200;
     let hasSpeech = false;
     let lastSpeech = Date.now();
 
     vadRef.current = setInterval(() => {
       if (!voiceModeRef.current) { clearInterval(vadRef.current); return; }
-      analyser.getFloatTimeDomainData(data);
-      const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length);
-      setAmplitude(Math.min(rms * 20, 1));
+      analyser.getByteFrequencyData(freqData);
+      // Average energy across speech-relevant frequency bands (300Hz–3400Hz)
+      const binStart = Math.floor(300  / (audioCtx.sampleRate / analyser.fftSize));
+      const binEnd   = Math.floor(3400 / (audioCtx.sampleRate / analyser.fftSize));
+      let sum = 0;
+      for (let i = binStart; i <= Math.min(binEnd, freqData.length - 1); i++) sum += freqData[i];
+      const energy = sum / Math.max(binEnd - binStart, 1);
 
-      if (rms > THRESHOLD) {
+      setAmplitude(Math.min(energy / 60, 1)); // 0–1 for animation
+
+      if (energy > SPEECH_THRESHOLD) {
         hasSpeech = true;
         lastSpeech = Date.now();
       } else if (hasSpeech && Date.now() - lastSpeech > SILENCE_MS) {
@@ -396,6 +405,17 @@ export default function ChatPage() {
               </div>
             </div>
           ))}
+          {/* Voice transcribing indicator — shows in message list between turns */}
+          {voiceMode && voiceState === "thinking" && (
+            <div className="message-row ai">
+              <div className="avatar ai-avatar"><Loader2 size={16} className="spin" /></div>
+              <div>
+                <div className="message-bubble" style={{ background: "rgba(45,106,79,0.06)", color: "var(--muted)", fontSize: "0.82rem" }}>
+                  Transcribing your message…
+                </div>
+              </div>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
 
@@ -416,10 +436,10 @@ export default function ChatPage() {
         )}
 
         {/* Composer / Voice UI */}
-        <div className="chat-composer">
+        <div className="chat-composer" style={voiceMode ? { paddingTop: "0.5rem" } : {}}>
           {voiceMode ? (
             /* ── Voice mode UI ── */
-            <div className="voice-mode-panel">
+            <div className="voice-mode-panel" style={{ paddingTop: "0.75rem", paddingBottom: "0.25rem" }}>
               <div className={`voice-orb voice-orb-${voiceState}`}>
                 <VoiceBars state={voiceState} amplitude={amplitude} />
               </div>
