@@ -1,5 +1,11 @@
-from fastapi import FastAPI
+import json
+import os
+import ssl
+
+import certifi
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.env import load_local_env
 
@@ -25,6 +31,11 @@ app.include_router(escalations.router)
 app.include_router(conversations.router)
 app.include_router(notifications.router)
 
+try:
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    _SSL_CTX = ssl.create_default_context()
+
 
 @app.get("/api/health")
 def health():
@@ -35,8 +46,8 @@ def health():
     azure_ready  = bool(cfg["endpoint"] and cfg["key"])
     openai_ready = bool(cfg["oai_key"])
     endpoint_type = (
-        "ai-services"   if "services.ai.azure.com" in cfg["endpoint"] else
-        "foundry-v1"    if "/v1" in cfg["endpoint"] else
+        "ai-services"    if "services.ai.azure.com" in cfg["endpoint"] else
+        "foundry-v1"     if "/v1" in cfg["endpoint"] else
         "classic-openai" if cfg["endpoint"] else "none"
     )
     ai_source = (
@@ -45,78 +56,65 @@ def health():
         "rule-based-fallback"
     )
     return {
-        "status":       "ok",
-        "service":      "PathFinder API",
-        "ai_chat":      ai_source,
-        "azure_endpoint": cfg["endpoint"] or "not set",
+        "status":           "ok",
+        "service":          "PathFinder API",
+        "ai_chat":          ai_source,
+        "azure_endpoint":   cfg["endpoint"] or "not set",
         "azure_deployment": cfg["deployment"],
-        "openai_key_set": bool(cfg["oai_key"]),
-        "referrals":    len(REFERRALS),
-        "programs":     len(PROGRAMS),
-        "staff":        len(STAFF),
+        "openai_key_set":   bool(cfg["oai_key"]),
+        "referrals":        len(REFERRALS),
+        "programs":         len(PROGRAMS),
+        "staff":            len(STAFF),
     }
 
 
 @app.post("/api/transcribe")
 async def transcribe_audio(request: Request):
-    """
-    Accept raw audio from the browser mic button and return transcribed text.
-    Frontend POSTs multipart or raw audio bytes.
-    """
+    """Accept raw audio and return transcribed text via OpenAI Whisper."""
     from app.ai.azure_speech import transcribe
-    from fastapi import Request as Req
     body = await request.body()
-    content_type = request.headers.get("content-type", "audio/webm")
+    content_type = request.headers.get("content-type", "audio/webm").split(";")[0].strip()
     if not body:
-        return {"error": "No audio data received"}
+        return {"text": "", "error": "No audio data received"}
     result = transcribe(body, content_type)
-    if result:
+    if result and result.get("text"):
         return result
-    return {"text": "", "error": "Transcription unavailable — check Azure Whisper deployment"}
-
-
-# FastAPI Request import needed above
-from fastapi import Request  # noqa: E402 (after app definition is fine)
+    return {"text": "", "error": "Could not transcribe — try typing instead"}
 
 
 @app.post("/api/tts")
 async def text_to_speech(request: Request):
-    """
-    Convert AI reply text to speech via OpenAI TTS.
-    Returns audio/mpeg for the browser to play back.
-    """
-    import json, os, ssl, urllib.request
-    try:
-        import certifi
-        ctx = ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        ctx = ssl.create_default_context()
-
-    from app.env import load_local_env
+    """Convert text to speech via OpenAI TTS (shimmer voice). Returns audio/mpeg."""
     load_local_env()
     oai_key = os.getenv("OPENAI_API_KEY", "")
     if not oai_key:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="TTS not available")
+        raise HTTPException(status_code=503, detail="TTS not available — OPENAI_API_KEY not set")
 
     body = await request.json()
     text = (body.get("text") or "")[:600].strip()
     if not text:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="No text provided")
 
-    payload = json.dumps({"model": "tts-1", "input": text, "voice": "shimmer", "response_format": "mp3"}).encode()
-    req = urllib.request.Request(
+    import urllib.request as urlreq
+    payload = json.dumps({
+        "model":           "tts-1",
+        "input":           text,
+        "voice":           "shimmer",
+        "response_format": "mp3",
+    }).encode()
+
+    req = urlreq.Request(
         "https://api.openai.com/v1/audio/speech",
         data=payload,
-        headers={"Authorization": f"Bearer {oai_key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {oai_key}",
+            "Content-Type":  "application/json",
+        },
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+        with urlreq.urlopen(req, timeout=20, context=_SSL_CTX) as r:
             audio = r.read()
-        from fastapi.responses import Response
         return Response(content=audio, media_type="audio/mpeg")
     except Exception as e:
-        from fastapi import HTTPException
         raise HTTPException(status_code=502, detail=f"TTS failed: {e}")

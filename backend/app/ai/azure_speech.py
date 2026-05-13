@@ -45,14 +45,16 @@ def transcribe(audio_bytes: bytes, content_type: str = "audio/webm") -> dict | N
     content_type examples: "audio/webm", "audio/wav", "audio/ogg", "audio/mpeg"
     """
     cfg = _cfg()
+    # Strip codec suffix e.g. "audio/webm;codecs=opus" → "audio/webm"
+    base_ct = content_type.split(";")[0].strip()
     ext_map = {
         "audio/webm": "webm",
-        "audio/wav": "wav",
-        "audio/ogg": "ogg",
+        "audio/wav":  "wav",
+        "audio/ogg":  "ogg",
         "audio/mpeg": "mp3",
-        "audio/mp4": "mp4",
+        "audio/mp4":  "mp4",
     }
-    ext = ext_map.get(content_type, "webm")
+    ext = ext_map.get(base_ct, "webm")
 
     # Multipart form-data body
     boundary = "----PathFinderAudioBoundary"
