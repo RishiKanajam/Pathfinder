@@ -77,3 +77,46 @@ async def transcribe_audio(request: Request):
 
 # FastAPI Request import needed above
 from fastapi import Request  # noqa: E402 (after app definition is fine)
+
+
+@app.post("/api/tts")
+async def text_to_speech(request: Request):
+    """
+    Convert AI reply text to speech via OpenAI TTS.
+    Returns audio/mpeg for the browser to play back.
+    """
+    import json, os, ssl, urllib.request
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        ctx = ssl.create_default_context()
+
+    from app.env import load_local_env
+    load_local_env()
+    oai_key = os.getenv("OPENAI_API_KEY", "")
+    if not oai_key:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="TTS not available")
+
+    body = await request.json()
+    text = (body.get("text") or "")[:600].strip()
+    if not text:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="No text provided")
+
+    payload = json.dumps({"model": "tts-1", "input": text, "voice": "nova", "response_format": "mp3"}).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/audio/speech",
+        data=payload,
+        headers={"Authorization": f"Bearer {oai_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+            audio = r.read()
+        from fastapi.responses import Response
+        return Response(content=audio, media_type="audio/mpeg")
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=502, detail=f"TTS failed: {e}")

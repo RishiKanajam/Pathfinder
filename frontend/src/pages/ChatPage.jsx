@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, Bot, ExternalLink,
-  Loader2, Mic, MicOff, Phone, Send, UserRound, X,
+  Loader2, Mic, Phone, Send, UserRound, X,
 } from "lucide-react";
 
 const API = "/api";
@@ -26,38 +26,68 @@ function fmtTime(iso) {
   catch { return ""; }
 }
 
-// Blinking cursor for streaming messages
 function StreamCursor() {
   return <span className="stream-cursor">▍</span>;
 }
 
+// Animated waveform bars for voice mode
+function VoiceBars({ state, amplitude }) {
+  const bars = 7;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32 }}>
+      {Array.from({ length: bars }).map((_, i) => {
+        const center = (bars - 1) / 2;
+        const dist = Math.abs(i - center);
+        const baseH = state === "listening"
+          ? 6 + amplitude * 28 * Math.max(0, 1 - dist * 0.25)
+          : state === "speaking" ? 14 - dist * 2 : 4;
+        return (
+          <div key={i} style={{
+            width: 3, borderRadius: 2, background: "white",
+            height: Math.max(4, baseH),
+            opacity: state === "thinking" ? 0.4 : 1,
+            transition: "height 0.08s ease",
+            animation: state === "thinking" ? "none" : `voiceBarBounce 0.5s ${i * 0.07}s ease-in-out infinite alternate`,
+          }} />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ChatPage() {
-  const [messages, setMessages]             = useState([OPENING_MSG]);
-  const [input, setInput]                   = useState("");
-  const [conversationId, setCid]            = useState(null);
-  const [streaming, setStreaming]           = useState(false);
-  const [afterHours, setAfterHours]         = useState(false);
+  const [messages, setMessages]               = useState([OPENING_MSG]);
+  const [input, setInput]                     = useState("");
+  const [conversationId, setCid]              = useState(null);
+  const [streaming, setStreaming]             = useState(false);
+  const [afterHours, setAfterHours]           = useState(false);
   const [showCrisisPanel, setShowCrisisPanel] = useState(false);
-  const [programMatches, setProgramMatches] = useState([]);
+  const [programMatches, setProgramMatches]   = useState([]);
+  const [voiceError, setVoiceError]           = useState("");
 
-  // Voice
-  const [isRecording, setIsRecording]       = useState(false);
-  const [transcribing, setTranscribing]     = useState(false);
-  const [recSeconds, setRecSeconds]         = useState(0);
-  const [voiceError, setVoiceError]         = useState("");
+  // Voice mode
+  const [voiceMode, setVoiceMode]       = useState(false);
+  const [voiceState, setVoiceState]     = useState("idle"); // listening | thinking | speaking
+  const [amplitude, setAmplitude]       = useState(0);
 
-  const endRef           = useRef(null);
-  const inputRef         = useRef(null);
-  const recorderRef      = useRef(null);
-  const chunksRef        = useRef([]);
-  const timerRef         = useRef(null);
-  const convIdRef        = useRef(null);  // always-current ref for closures
+  const endRef        = useRef(null);
+  const inputRef      = useRef(null);
+  const convIdRef     = useRef(null);
+  const voiceModeRef  = useRef(false);
+  const streamRef     = useRef(null);
+  const recorderRef   = useRef(null);
+  const chunksRef     = useRef([]);
+  const vadRef        = useRef(null);
+  const audioCtxRef   = useRef(null);
+  const currentAudio  = useRef(null);
+  const accumulatedRef = useRef(""); // track full AI reply for TTS
 
   useEffect(() => { convIdRef.current = conversationId; }, [conversationId]);
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
 
   useEffect(() => {
     setAfterHours(new Date().getHours() < 9 || new Date().getHours() >= 17);
-    return () => { clearInterval(timerRef.current); recorderRef.current?.stream?.getTracks().forEach(t => t.stop()); };
+    return () => stopVoiceResources();
   }, []);
 
   useEffect(() => {
@@ -70,12 +100,12 @@ export default function ChatPage() {
     const text = (textOverride ?? input).trim();
     if (!text || streaming) return;
     if (!textOverride) setInput("");
+    accumulatedRef.current = "";
 
     const userMsg = { role: "client", content: text, ts: new Date().toISOString() };
     setMessages(m => [...m, userMsg]);
     setStreaming(true);
 
-    // Placeholder streaming message
     const placeholder = { role: "ai", content: "", streaming: true, ts: new Date().toISOString() };
     setMessages(m => [...m, placeholder]);
 
@@ -90,7 +120,6 @@ export default function ChatPage() {
 
       const reader  = res.body.getReader();
       const decoder = new TextDecoder();
-      let accumulated = "";
       let buffer = "";
 
       while (true) {
@@ -108,26 +137,24 @@ export default function ChatPage() {
           try {
             const parsed = JSON.parse(payload);
             if (parsed.delta) {
-              accumulated += parsed.delta;
+              accumulatedRef.current += parsed.delta;
+              const snap = accumulatedRef.current;
               setMessages(m => {
                 const copy = [...m];
                 const last = copy[copy.length - 1];
-                if (last?.streaming) copy[copy.length - 1] = { ...last, content: accumulated };
+                if (last?.streaming) copy[copy.length - 1] = { ...last, content: snap };
                 return copy;
               });
             }
-            // Metadata sent at stream start
             if (parsed.meta) {
               if (parsed.meta.risk?.level === "high") setShowCrisisPanel(true);
               if (parsed.meta.matches?.length) setProgramMatches(parsed.meta.matches.slice(0, 3));
             }
-            // Final event — conversation saved, conv_id available
             if (parsed.conv_id) setCid(parsed.conv_id);
           } catch {}
         }
       }
 
-      // Mark streaming done
       setMessages(m => {
         const copy = [...m];
         const last = copy[copy.length - 1];
@@ -135,9 +162,12 @@ export default function ChatPage() {
         return copy;
       });
 
-      // conv_id, risk, matches all come via stream events — no second fetch needed
+      // Speak the reply if in voice mode
+      if (voiceModeRef.current && accumulatedRef.current.trim()) {
+        await speakReply(accumulatedRef.current.trim());
+      }
 
-    } catch (err) {
+    } catch {
       setMessages(m => {
         const copy = [...m];
         const last = copy[copy.length - 1];
@@ -150,94 +180,155 @@ export default function ChatPage() {
         }
         return copy;
       });
+      if (voiceModeRef.current) await startListeningCycle();
     } finally {
       setStreaming(false);
-      inputRef.current?.focus();
+      if (!voiceModeRef.current) inputRef.current?.focus();
     }
   }
 
-  // ── Voice recording ────────────────────────────────────────
+  // ── Voice mode ─────────────────────────────────────────────
 
-  async function toggleMic() {
+  function stopVoiceResources() {
+    clearInterval(vadRef.current);
+    recorderRef.current?.state !== "inactive" && recorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    currentAudio.current?.pause();
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  }
+
+  async function enterVoiceMode() {
     setVoiceError("");
-    if (isRecording) {
-      recorderRef.current?.stop();
-      return;
-    }
-
     if (!navigator.mediaDevices?.getUserMedia) {
       setVoiceError("Microphone not supported in this browser.");
       return;
     }
+    setVoiceMode(true);
+    voiceModeRef.current = true;
+    await startListeningCycle();
+  }
+
+  function exitVoiceMode() {
+    voiceModeRef.current = false;
+    setVoiceMode(false);
+    setVoiceState("idle");
+    setAmplitude(0);
+    stopVoiceResources();
+  }
+
+  async function startListeningCycle() {
+    if (!voiceModeRef.current) return;
+    stopVoiceResources();
+    setVoiceState("listening");
+    setAmplitude(0);
 
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    } catch (e) {
-      setVoiceError(e.name === "NotAllowedError" ? "Microphone access denied — allow it in your browser settings." : "Could not access microphone.");
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+      });
+    } catch {
+      exitVoiceMode();
+      setVoiceError("Microphone access denied.");
       return;
     }
+    streamRef.current = stream;
 
-    // Pick best supported MIME type
+    // AudioContext for VAD
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioCtx();
+    audioCtxRef.current = audioCtx;
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+
+    // Recorder
     const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"]
       .find(t => MediaRecorder.isTypeSupported(t)) || "";
-
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
     recorderRef.current = recorder;
-    chunksRef.current   = [];
-
+    chunksRef.current = [];
     recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
 
     recorder.onstop = async () => {
-      clearInterval(timerRef.current);
-      setRecSeconds(0);
-      setIsRecording(false);
       stream.getTracks().forEach(t => t.stop());
-
+      audioCtx.close().catch(() => {});
+      if (!voiceModeRef.current) return;
       const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
-      if (blob.size < 2000) { setVoiceError("Recording too short — try again."); return; }
-
-      setTranscribing(true);
-      try {
-        const res = await fetch(`${API}/transcribe`, {
-          method: "POST",
-          headers: { "Content-Type": mimeType || "audio/webm" },
-          body: blob,
-        });
-        const data = await res.json();
-
-        if (data.text?.trim()) {
-          const transcript = data.text.trim();
-          setInput(transcript);
-          // Short delay so user sees the transcript, then auto-send
-          setTimeout(() => sendMessage(transcript), 500);
-        } else {
-          setVoiceError(data.error || "Could not transcribe audio — try typing instead.");
-        }
-      } catch {
-        setVoiceError("Transcription failed — please type your message.");
-      } finally {
-        setTranscribing(false);
-      }
+      if (blob.size < 1500) { await startListeningCycle(); return; }
+      setVoiceState("thinking");
+      await transcribeAndSend(blob, mimeType);
     };
 
-    recorder.start(250);
-    setIsRecording(true);
+    recorder.start(100);
 
-    // Timer — max 60s
-    let secs = 0;
-    timerRef.current = setInterval(() => {
-      secs++;
-      setRecSeconds(secs);
-      if (secs >= 60) recorder.stop();
-    }, 1000);
+    // VAD — silence detection
+    const data = new Float32Array(analyser.fftSize);
+    const THRESHOLD = 0.013;
+    const SILENCE_MS = 1400;
+    let hasSpeech = false;
+    let lastSpeech = Date.now();
+
+    vadRef.current = setInterval(() => {
+      if (!voiceModeRef.current) { clearInterval(vadRef.current); return; }
+      analyser.getFloatTimeDomainData(data);
+      const rms = Math.sqrt(data.reduce((s, v) => s + v * v, 0) / data.length);
+      setAmplitude(Math.min(rms * 18, 1));
+
+      if (rms > THRESHOLD) {
+        hasSpeech = true;
+        lastSpeech = Date.now();
+      } else if (hasSpeech && Date.now() - lastSpeech > SILENCE_MS) {
+        clearInterval(vadRef.current);
+        recorder.stop();
+      }
+    }, 80);
+  }
+
+  async function transcribeAndSend(blob, mimeType) {
+    try {
+      const res = await fetch(`${API}/transcribe`, {
+        method: "POST",
+        headers: { "Content-Type": mimeType || "audio/webm" },
+        body: blob,
+      });
+      const data = await res.json();
+      if (data.text?.trim()) {
+        await sendMessage(data.text.trim());
+      } else {
+        await startListeningCycle();
+      }
+    } catch {
+      if (voiceModeRef.current) await startListeningCycle();
+    }
+  }
+
+  async function speakReply(text) {
+    if (!voiceModeRef.current) return;
+    setVoiceState("speaking");
+    try {
+      const res = await fetch(`${API}/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudio.current = audio;
+      await new Promise(resolve => { audio.onended = resolve; audio.onerror = resolve; audio.play().catch(resolve); });
+      URL.revokeObjectURL(url);
+    } catch { /* skip TTS, continue */ }
+    if (voiceModeRef.current) await startListeningCycle();
   }
 
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
-  const busy = streaming || transcribing;
+  const busy = streaming;
 
   return (
     <section className={`chat-layout${showCrisisPanel ? " with-crisis-panel" : ""}`}>
@@ -279,20 +370,6 @@ export default function ChatPage() {
               </div>
             </div>
           ))}
-
-          {/* Transcribing indicator */}
-          {transcribing && (
-            <div className="message-row ai">
-              <div className="avatar ai-avatar"><Loader2 size={16} className="spin" /></div>
-              <div>
-                <div className="typing-indicator voice-transcribing">
-                  <Mic size={13} style={{ color: "var(--coral)" }} />
-                  <span style={{ fontSize: "0.78rem", color: "var(--muted)" }}>Transcribing voice…</span>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div ref={endRef} />
         </div>
 
@@ -312,36 +389,58 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Composer */}
+        {/* Composer / Voice UI */}
         <div className="chat-composer">
-          <div className="composer-input-row">
-            <button type="button"
-              className={`mic-button${isRecording ? " recording" : ""}${transcribing ? " transcribing" : ""}`}
-              onClick={toggleMic} disabled={busy && !isRecording}
-              aria-label={isRecording ? "Stop recording" : "Start voice input"}
-              title={isRecording ? `Recording ${recSeconds}s — tap to stop & send` : "Tap to speak"}>
-              {transcribing ? <Loader2 size={17} className="spin" /> : isRecording ? <MicOff size={17} /> : <Mic size={17} />}
-            </button>
-
-            {isRecording
-              ? <span className="recording-badge"><span className="rec-dot" />{recSeconds}s — tap mic to send</span>
-              : <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={transcribing ? "Transcribing…" : "What's been going on for you lately?"}
-                  disabled={busy} />
-            }
-
-            <button type="button" className="send-button"
-              onClick={() => sendMessage()} disabled={busy || isRecording || !input.trim()}>
-              <Send size={17} />
-            </button>
-          </div>
-
-          {voiceError && (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.35rem 0.25rem", fontSize: "0.78rem", color: "var(--coral)" }}>
-              <AlertTriangle size={13} />{voiceError}
-              <button onClick={() => setVoiceError("")} style={{ marginLeft: "auto", color: "var(--muted)" }}><X size={13} /></button>
+          {voiceMode ? (
+            /* ── Voice mode UI ── */
+            <div className="voice-mode-panel">
+              <div className={`voice-orb voice-orb-${voiceState}`}>
+                <VoiceBars state={voiceState} amplitude={amplitude} />
+              </div>
+              <p className="voice-state-label">
+                {voiceState === "listening" ? "Listening…"
+                  : voiceState === "thinking" ? "Thinking…"
+                  : "Speaking…"}
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                {voiceState === "speaking" && (
+                  <button className="quiet-button" style={{ fontSize: "0.8rem" }}
+                    onClick={() => { currentAudio.current?.pause(); startListeningCycle(); }}>
+                    Interrupt
+                  </button>
+                )}
+                <button className="quiet-button" style={{ fontSize: "0.8rem", color: "var(--coral)" }}
+                  onClick={exitVoiceMode}>
+                  End voice chat
+                </button>
+              </div>
             </div>
+          ) : (
+            /* ── Text input ── */
+            <>
+              <div className="composer-input-row">
+                <button type="button" className="mic-button"
+                  onClick={enterVoiceMode}
+                  title="Switch to voice chat">
+                  <Mic size={17} />
+                </button>
+                <input ref={inputRef} value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="What's been going on for you lately?"
+                  disabled={busy} />
+                <button type="button" className="send-button"
+                  onClick={() => sendMessage()} disabled={busy || !input.trim()}>
+                  {busy ? <Loader2 size={17} className="spin" /> : <Send size={17} />}
+                </button>
+              </div>
+              {voiceError && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.35rem 0.25rem", fontSize: "0.78rem", color: "var(--coral)" }}>
+                  <AlertTriangle size={13} />{voiceError}
+                  <button onClick={() => setVoiceError("")} style={{ marginLeft: "auto", color: "var(--muted)" }}><X size={13} /></button>
+                </div>
+              )}
+            </>
           )}
 
           <a href="tel:0240961100" className="talk-to-person" style={{ textDecoration: "none" }}>
