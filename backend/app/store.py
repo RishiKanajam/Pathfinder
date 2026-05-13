@@ -7,10 +7,11 @@ from app.ai.program_matcher import match_programs
 from app.ai.risk_engine import assess_risk
 
 # ── ID counters ──────────────────────────────────────────────
-_escalation_ids  = count(1)
-_audit_log_ids   = count(1)
-_referral_ids    = count(126)   # next auto ID after seeded data
-_conversation_ids = count(501)
+_escalation_ids   = count(1)
+_audit_log_ids    = count(1)
+_referral_ids     = count(126)   # next auto ID after seeded data
+_conversation_ids = count(503)   # 500-502 are seeded; new convos start at 503
+_staff_ids        = count(6)     # 1-5 are seeded staff
 
 
 def _now() -> str:
@@ -28,105 +29,105 @@ PROGRAMS = [
         "category": "psychology",
         "description": "General psychology, distress support, mental health planning, experienced clinician.",
         "specialty": "General", "capacity": 12, "current_load": 7,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 2, "name": "Kintsugi OT", "provider": "Nicholas Volcan",
         "category": "occupational_therapy",
         "description": "Neurodivergent specialist — autism, ADHD, occupational therapy and practical functioning support.",
         "specialty": "Neurodivergent", "capacity": 10, "current_load": 6,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 3, "name": "Walk Within", "provider": "Daniel Ebbin",
         "category": "counselling",
         "description": "Transpersonal therapy, meaning, identity, life transitions and emotional exploration.",
         "specialty": "Transpersonal", "capacity": 9, "current_load": 5,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 4, "name": "Art Therapy", "provider": "Chelsea Arnold",
         "category": "counselling",
         "description": "Creative and expressive therapy — ideal for people who find talking difficult.",
         "specialty": "Creative/expressive", "capacity": 8, "current_load": 3,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 5, "name": "Constructive Thinking", "provider": "Candice Sherriff",
         "category": "counselling",
         "description": "General counselling — coping strategies, relationship stress, anxiety and depression.",
         "specialty": "General counselling", "capacity": 15, "current_load": 8,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 6, "name": "Well Education", "provider": "Laura Collison",
         "category": "education",
         "description": "Wellbeing education, psychoeducation, workshops and health literacy.",
         "specialty": "Wellbeing education", "capacity": 18, "current_load": 9,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 7, "name": "Bright Feathers Counselling", "provider": "Mel Sebastian",
         "category": "education",
         "description": "Educational consulting, youth support, school navigation and learning-related wellbeing.",
         "specialty": "Educational consulting", "capacity": 8, "current_load": 4,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 8, "name": "The Rosewood Centre", "provider": "Clinical psychologists",
         "category": "psychology",
         "description": "Complex presentations, high-risk cases, suicide prevention, trauma-informed clinical psychology.",
         "specialty": "Complex/high-risk", "capacity": 7, "current_load": 6,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 9, "name": "Phoenix Assist", "provider": "Phoenix Assist",
         "category": "NDIS",
         "description": "NDIS support coordination — disability services, navigation and plan implementation.",
         "specialty": "NDIS coordination", "capacity": 14, "current_load": 10,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 10, "name": "Gamble Aware", "provider": "Simon Shields",
         "category": "gambling",
         "description": "Financial and gambling counselling — debt stress, gambling harm and recovery planning.",
         "specialty": "Gambling/financial", "capacity": 11, "current_load": 4,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 11, "name": "Fearless Therapies", "provider": "Amy Harrison",
         "category": "counselling",
         "description": "General therapy — emotional regulation, trauma-informed support and practical wellbeing.",
         "specialty": "General therapy", "capacity": 10, "current_load": 6,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 12, "name": "Top Blokes Foundation", "provider": "Top Blokes Foundation",
         "category": "peer_support",
         "description": "Men's mental health — young men, peer connection, confidence and healthy relationships.",
         "specialty": "Men's mental health", "capacity": 20, "current_load": 13,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 13, "name": "SandWaves Therapy", "provider": "Michael Bourke",
         "category": "counselling",
         "description": "Therapy services — emotional wellbeing, resilience and accessible counselling.",
         "specialty": "General therapy", "capacity": 12, "current_load": 5,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
     {
         "id": 14, "name": "Name.Narrate.Navigate", "provider": "Name.Narrate.Navigate",
         "category": "counselling",
         "description": "Narrative therapy — making sense of personal stories, identity and life transitions.",
         "specialty": "Narrative therapy", "capacity": 8, "current_load": 3,
-        "connected_to_care_url": "https://www.connectedtocare.com.au",
+        "connected_to_care_url": "https://www.connectedtocare.com.au", "is_partner": True,
     },
 ]
 
 # ── Staff ────────────────────────────────────────────────────
 STAFF = [
     {"id": 1, "name": "Bradley", "role": "CEO", "email": "ceo@lmnspn.org.au",
-     "can_handle_high_risk": True, "is_on_call": False, "max_caseload": 10},
+     "can_handle_high_risk": True, "is_on_call": False, "max_caseload": 10, "can_manage_staff": True},
     {"id": 2, "name": "Cameron", "role": "Support worker", "email": "cameron@lmnspn.org.au",
      "can_handle_high_risk": False, "is_on_call": True, "max_caseload": 20},
     {"id": 3, "name": "Teyarnee", "role": "Support worker & suicide prevention peer worker",
@@ -656,35 +657,48 @@ def create_referral(payload: dict) -> dict:
     return referral
 
 
+_LOW_FALLBACKS = [
+    "I hear you. What's been going on for you lately?",
+    "Thanks for reaching out. What would feel most helpful right now — talking through what's happening, or finding someone to speak with?",
+    "I'm here. Can you tell me a bit more about what's been going on?",
+    "You've come to the right place. What's been feeling hardest lately?",
+    "I'm listening. Take your time — what's on your mind?",
+]
+_fallback_idx = 0
+
+
 def _fallback_chat_reply(message: str, assessment) -> str:
+    global _fallback_idx
     lowered = message.lower()
 
     if assessment.level == "high":
         return (
             "I'm really glad you reached out. If you are in immediate danger right now, "
-            "please call 000. Lifeline is available 24/7 on 13 11 14, with real people "
-            "there right now. Are you safe right now?"
-        )
-
-    if any(phrase in lowered for phrase in ["no one loves me", "nobody loves me", "unlovable", "unloved", "no one likes me"]):
-        return (
-            "That sounds really painful, and I'm glad you told me. Feeling unloved can make "
-            "the moment feel very heavy, but you do not have to sit with it alone here. "
-            "Are you safe right now, and would you like to tell me what happened today?"
+            "please call 000. Lifeline is available 24/7 on 13 11 14 — real people, right now. "
+            "Are you safe right now?"
         )
 
     if assessment.level == "medium":
+        if any(w in lowered for w in ["hopeless", "worthless", "pointless", "burden"]):
+            return (
+                "That feeling of hopelessness sounds really heavy. "
+                "You don't have to carry it alone tonight. "
+                "Can you tell me what's been making things feel this way?"
+            )
+        if any(w in lowered for w in ["alone", "lonely", "nobody", "no one"]):
+            return (
+                "Feeling alone with this sounds really hard. "
+                "Is there anything that happened recently that's made it worse?"
+            )
         return (
-            "That sounds really difficult. You don't have to sort it all out tonight. "
-            "I'm here with you, and I can help connect you with a person if that would help. "
-            "What is making things feel hardest right now?"
+            "That sounds really difficult. I'm here with you. "
+            "What's been making things feel hardest right now?"
         )
 
-    return (
-        "Thank you for telling me. I'm here with you, and we can take this one step at a time. "
-        "Would it help to talk through what has been happening, or would you prefer I help find "
-        "someone from the Evolve Hub team to contact you?"
-    )
+    # Low risk — rotate through varied openers so it never repeats
+    reply = _LOW_FALLBACKS[_fallback_idx % len(_LOW_FALLBACKS)]
+    _fallback_idx += 1
+    return reply
 
 
 def create_chat_turn(message: str, conversation_id: int | None = None, ai_reply: str | None = None) -> dict:
@@ -782,6 +796,48 @@ def analytics() -> dict:
             "3 high-risk cases opened this week — all currently in escalation tracking.",
         ],
     }
+
+
+ALLOWED_PERMISSIONS = {"can_manage_staff", "can_handle_high_risk", "is_on_call"}
+
+
+def create_staff_member(payload: dict) -> dict | str:
+    """CEO-only: add a new staff member. Returns 'not_authorised' if requester lacks permission."""
+    requester = next((s for s in STAFF if s["id"] == payload.get("requested_by")), None)
+    if not requester or not requester.get("can_manage_staff"):
+        return "not_authorised"
+    member = {
+        "id":                 next(_staff_ids),
+        "name":               payload["name"],
+        "role":               payload.get("role", "Support worker"),
+        "email":              payload.get("email", ""),
+        "can_handle_high_risk": payload.get("can_handle_high_risk", False),
+        "is_on_call":         payload.get("is_on_call", False),
+        "max_caseload":       payload.get("max_caseload", 15),
+        "can_manage_staff":   False,
+    }
+    STAFF.append(member)
+    log_audit_event("staff", payload["requested_by"], "STAFF_MEMBER_CREATED", member["id"], {
+        "name": member["name"], "role": member["role"],
+    })
+    return member
+
+
+def grant_staff_permission(staff_id: int, permission: str, value: bool, granted_by: int) -> dict | str:
+    """CEO-only: toggle a permission flag on a staff member."""
+    if permission not in ALLOWED_PERMISSIONS:
+        return "invalid_permission"
+    granter = next((s for s in STAFF if s["id"] == granted_by), None)
+    if not granter or not granter.get("can_manage_staff"):
+        return "not_authorised"
+    member = next((s for s in STAFF if s["id"] == staff_id), None)
+    if not member:
+        return "not_found"
+    member[permission] = value
+    log_audit_event("staff", granted_by, "PERMISSION_CHANGED", staff_id, {
+        "permission": permission, "value": value,
+    })
+    return member
 
 
 def _counter(values) -> dict[str, int]:

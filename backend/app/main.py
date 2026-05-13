@@ -5,7 +5,7 @@ from app.env import load_local_env
 
 load_local_env()
 
-from app.routers import analytics, chat, programs, referrals, escalations
+from app.routers import analytics, chat, conversations, notifications, programs, referrals, escalations
 
 app = FastAPI(title="PathFinder API", version="0.1.0")
 
@@ -22,8 +22,58 @@ app.include_router(chat.router)
 app.include_router(analytics.router)
 app.include_router(programs.router)
 app.include_router(escalations.router)
+app.include_router(conversations.router)
+app.include_router(notifications.router)
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "PathFinder API"}
+    from app.ai.azure_openai import _env
+    from app.store import REFERRALS, PROGRAMS, STAFF
+    cfg = _env()
+
+    azure_ready  = bool(cfg["endpoint"] and cfg["key"])
+    openai_ready = bool(cfg["oai_key"])
+    endpoint_type = (
+        "ai-services"   if "services.ai.azure.com" in cfg["endpoint"] else
+        "foundry-v1"    if "/v1" in cfg["endpoint"] else
+        "classic-openai" if cfg["endpoint"] else "none"
+    )
+    ai_source = (
+        f"azure/{endpoint_type}" if azure_ready  else
+        "openai"                  if openai_ready else
+        "rule-based-fallback"
+    )
+    return {
+        "status":       "ok",
+        "service":      "PathFinder API",
+        "ai_chat":      ai_source,
+        "azure_endpoint": cfg["endpoint"] or "not set",
+        "azure_deployment": cfg["deployment"],
+        "openai_key_set": bool(cfg["oai_key"]),
+        "referrals":    len(REFERRALS),
+        "programs":     len(PROGRAMS),
+        "staff":        len(STAFF),
+    }
+
+
+@app.post("/api/transcribe")
+async def transcribe_audio(request: Request):
+    """
+    Accept raw audio from the browser mic button and return transcribed text.
+    Frontend POSTs multipart or raw audio bytes.
+    """
+    from app.ai.azure_speech import transcribe
+    from fastapi import Request as Req
+    body = await request.body()
+    content_type = request.headers.get("content-type", "audio/webm")
+    if not body:
+        return {"error": "No audio data received"}
+    result = transcribe(body, content_type)
+    if result:
+        return result
+    return {"text": "", "error": "Transcription unavailable — check Azure Whisper deployment"}
+
+
+# FastAPI Request import needed above
+from fastapi import Request  # noqa: E402 (after app definition is fine)

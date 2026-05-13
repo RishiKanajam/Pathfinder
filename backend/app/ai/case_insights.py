@@ -123,19 +123,19 @@ def compute_clinician_fit(complexity: float, themes: list[str], risk_score: floa
         experienced = round(0.75 - complexity * 0.10, 2)
         new = round(max(0.35, 0.80 - complexity * 0.45), 2)
 
-    # Clamp all to [0.05, 0.99]
+    # Keys match ReferralDrawer.jsx: junior / mid / senior
     return {
-        "new_professional": round(min(max(new, 0.05), 0.99), 2),
-        "experienced_professional": round(min(max(experienced, 0.05), 0.99), 2),
-        "senior_psychologist": round(min(max(senior, 0.05), 0.99), 2),
+        "junior": round(min(max(new,        0.05), 0.99), 2),
+        "mid":    round(min(max(experienced, 0.05), 0.99), 2),
+        "senior": round(min(max(senior,      0.05), 0.99), 2),
     }
 
 
 def get_workforce_recommendation(clinician_fit: dict) -> dict:
     labels = {
-        "new_professional": "New professional psychologist",
-        "experienced_professional": "Experienced professional psychologist",
-        "senior_psychologist": "Senior / specialist psychologist",
+        "junior": "Junior psychologist / new professional (0–3 yrs)",
+        "mid":    "Experienced professional (3–7 yrs)",
+        "senior": "Senior / specialist psychologist (7+ yrs)",
     }
     best_key = max(clinician_fit, key=clinician_fit.get)
     return {
@@ -143,11 +143,11 @@ def get_workforce_recommendation(clinician_fit: dict) -> dict:
         "label": labels[best_key],
         "confidence": clinician_fit[best_key],
         "rationale": (
-            "Complexity and risk indicators point to senior clinical ownership."
-            if best_key == "senior_psychologist"
-            else "The case appears suitable for an experienced professional with standard review."
-            if best_key == "experienced_professional"
-            else "The case appears suitable for a newer professional with supervision available."
+            "Complexity and risk indicators require senior clinical ownership."
+            if best_key == "senior"
+            else "Case suits an experienced professional with periodic senior review."
+            if best_key == "mid"
+            else "Case appears suitable for a junior professional with supervision."
         ),
     }
 

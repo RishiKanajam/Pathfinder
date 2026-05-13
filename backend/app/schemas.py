@@ -73,3 +73,19 @@ class AuditLogEntry(BaseModel):
     action: str
     resource_id: int
     details: dict | None = None
+
+
+class NewStaffMember(BaseModel):
+    name: str
+    role: str
+    email: str = ""
+    can_handle_high_risk: bool = False
+    is_on_call: bool = False
+    max_caseload: int = 15
+    requested_by: int  # staff ID of the requester (must have can_manage_staff)
+
+
+class GrantPermissionPayload(BaseModel):
+    permission: str   # "can_manage_staff" | "can_handle_high_risk" | "is_on_call"
+    value: bool = True
+    granted_by: int   # staff ID of the granter (must have can_manage_staff)

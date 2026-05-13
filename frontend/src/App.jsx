@@ -3,10 +3,15 @@ import LandingPage from "./pages/LandingPage.jsx";
 import PublicPortal from "./pages/PublicPortal.jsx";
 import StaffPortal  from "./pages/StaffPortal.jsx";
 
-// Emergency-first: public chat is the default first screen.
-// Landing remains available for demos via /home or ?portal=home.
+// Default: public chat. Staff go to ?portal=staff directly.
 export default function App() {
-  const [view, setView] = useState("public");
+  const params = new URLSearchParams(window.location.search);
+  const initial =
+    params.get("portal") === "staff"   ? "staff"   :
+    params.get("portal") === "home"    ? "landing" :
+    params.get("source")               ? "public"  : "public";
+
+  const [view, setView] = useState(initial);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

@@ -6,11 +6,30 @@ from dataclasses import dataclass
 # ── Signal 1: Crisis keywords (weight 40%) ────────────────────
 # ANY high keyword → minimum HIGH risk (per spec: borderlines round UP)
 HIGH_RISK_KEYWORDS = [
-    "kill myself", "end it all", "suicide", "want to die", "no point living",
-    "hurt myself", "end my life", "better off dead", "can't go on", "cant go on",
-    "no reason to live", "pills", "overdose", "bridge", "hang", "gun", "slit",
-    "jump off", "goodbye forever", "final note", "last message", "not safe",
-    "have a plan", "planned it", "won't be here", "wont be here",
+    # Direct suicide language
+    "kill myself", "killing myself", "suicide", "suicidal", "suiciding",
+    "want to die", "wants to die", "going to die", "going to kill",
+    "end it all", "end my life", "ending my life", "ended my life",
+    "take my life", "taking my life",
+    "no point living", "no reason to live", "no point in living",
+    "better off dead", "better off without me",
+    # Self-harm / methods
+    "hurt myself", "hurting myself", "harm myself",
+    "pills", "overdose", "bridge", "hang", "hanging",
+    "gun", "slit", "slash", "jump off", "jumped off",
+    # Planning language
+    "have a plan", "planned it", "made a plan", "i have a method",
+    "final note", "last message", "goodbye forever", "goodbye everyone",
+    "goodbye letter", "note to family",
+    # State language
+    "can't go on", "cant go on", "cannot go on",
+    "won't be here", "wont be here", "won't be around",
+    "not safe", "unsafe right now",
+    # Common natural phrases
+    "don't want to be here", "dont want to be here",
+    "don't want to live", "dont want to live",
+    "can't live like this", "cant live like this",
+    "don't want to exist", "want to disappear forever",
 ]
 
 MEDIUM_RISK_KEYWORDS = [

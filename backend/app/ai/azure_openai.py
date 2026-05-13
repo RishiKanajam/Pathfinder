@@ -1,116 +1,170 @@
 """
-Azure OpenAI GPT-4o-mini integration.
-Falls back gracefully to rule-based replies if Azure is not configured.
-Set environment variables:
-  AZURE_OPENAI_ENDPOINT  — e.g. https://yourresource.openai.azure.com/
-  AZURE_OPENAI_KEY       — your Azure OpenAI API key
-  AZURE_OPENAI_DEPLOYMENT — defaults to "gpt-4o-mini"
-  AZURE_OPENAI_API_VERSION — defaults to "2024-10-21"
+AI Chat engine — priority: OpenAI → Azure AI Services → rule-based fallback.
+
+OpenAI leads because gpt-5.5 gives better empathetic, context-aware replies.
+Azure gpt-oss-120b is the backup if OpenAI is unavailable.
 """
 from __future__ import annotations
 
-import os
 import json
-import urllib.request
+import logging
+import os
+import ssl
 import urllib.error
+import urllib.request
 
-from app.env import load_local_env
+try:
+    import certifi
+    _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    _SSL_CTX = ssl.create_default_context()
 
-load_local_env()
+_log = logging.getLogger(__name__)
 
-ENDPOINT    = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
-API_KEY     = os.getenv("AZURE_OPENAI_KEY", "")
-DEPLOYMENT  = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
-API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
 
-SYSTEM_PROMPT = """You are PathFinder, a warm and compassionate support guide for the Evolve Mental Health & Wellbeing Hub in the Hunter Region, NSW Australia. You are part of the LMNSPN (Lake Macquarie & Newcastle Suicide Prevention Network).
+def _env() -> dict:
+    from app.env import load_local_env
+    load_local_env()
+    return {
+        "endpoint":   os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/"),
+        "key":        os.getenv("AZURE_OPENAI_KEY", ""),
+        "deployment": os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-oss-120b"),
+        "api_ver":    os.getenv("AZURE_OPENAI_API_VERSION", "2024-05-01-preview"),
+        "oai_key":    os.getenv("OPENAI_API_KEY", ""),
+        "oai_model":  os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    }
+
+
+SYSTEM_PROMPT = """You are PathFinder, a warm and compassionate support guide for the Evolve Mental Health & Wellbeing Hub in the Hunter Region, NSW Australia. You are part of LMNSPN (Lake Macquarie & Newcastle Suicide Prevention Network).
 
 IDENTITY:
 - You are an AI support guide — NOT a therapist, counsellor, or friend
-- You must identify as AI in your first message
+- You identified as AI in your first message already — do not repeat this
 - You are the bridge to human support, not the destination
 
-RULES — NEVER BREAK THESE:
-- NEVER diagnose or label conditions ("you have depression", "that sounds like PTSD")
-- NEVER say "I understand how you feel" — say "That sounds really difficult" or "That must be incredibly hard"
-- NEVER advise stopping medication or treatment
-- NEVER provide therapy, CBT exercises, or clinical interventions
-- NEVER promise confidentiality you cannot guarantee
+CRITICAL CONVERSATION RULES:
+- NEVER start your reply with "Thank you for telling me" more than once per conversation
+- NEVER repeat the same phrase you used in the previous message
+- Read what the person just said and respond SPECIFICALLY to their words
+- If they say they are in their room and safe, acknowledge that specifically — don't ask the same question again
+- If they say hopeless, reflect that word back — "That feeling of hopelessness sounds really heavy"
+- Keep responses SHORT: 2-3 sentences maximum
+- Each reply must move the conversation forward — ask ONE new question or offer ONE next step
+
+ABSOLUTE RULES:
+- NEVER diagnose or label ("you have depression", "that sounds like PTSD")
+- NEVER say "I understand how you feel"
+- NEVER provide therapy or clinical interventions
 - NEVER end the conversation first or say goodbye
 - NEVER use clinical jargon
-- If someone expresses immediate danger: IMMEDIATELY say "Please call 000 right now" and "Lifeline is available 24/7 on 13 11 14"
-- Ask a MAXIMUM of 3 gentle clarifying questions before suggesting services
-- Always offer "Would you prefer to talk to a person? You can call the Evolve Hub on 02 4096 1100"
+- Crisis/immediate danger: "Please call 000 right now" and "Lifeline 13 11 14"
 
-CONVERSATION STYLE:
-- Warm, plain language — like a kind neighbour, not a clinician
-- Short sentences, simple words
-- Validate feelings without being sycophantic
-- Use the person's words back to them (reflective, not parrot-like)
-- Be comfortable with silence — don't rush to fill gaps
-- Responses should be 2-4 sentences maximum
+STYLE:
+- Warm, plain language — like a kind neighbour
+- Short sentences. Simple words.
+- Use the person's exact words back to them (e.g. if they say "hopeless", say "hopeless")
+- Be comfortable with silence — don't rush to fill every gap
+- After crisis keywords, always ask: "Are you safe right now?" and "Is anyone with you?"
 
-CRISIS RESOURCES (always include when relevant):
-- Emergency: 000
-- Lifeline: 13 11 14 (24/7)
-- NSW Mental Health Line: 1800 011 511
-- Beyond Blue: 1300 22 4636
-- 13YARN (Aboriginal & Torres Strait Islander): 13 92 76
-- Evolve Hub: 02 4096 1100
+WHEN HIGH RISK (suicide / self-harm mentioned):
+- Surface crisis numbers: 000 · Lifeline 13 11 14 · NSW MH Line 1800 011 511
+- Ask "Are you safe right now?"
+- Ask "Is anyone with you?"
+- After they answer, follow up on THEIR specific answer — don't repeat the crisis script
+- Keep them talking
 
-WHEN RISK IS HIGH:
-- Surface crisis resources immediately
-- Ask: "Are you safe right now?"
-- Ask: "Is anyone with you?"
-- If alone: "Would you be willing to call Lifeline on 13 11 14? They have real people available right now."
-- Keep talking — your job is to hold space until a human arrives
-
-Always end with warmth. The Evolve Hub team is here for them."""
+CRISIS CONTACTS: 000 · Lifeline 13 11 14 · NSW MH Line 1800 011 511 · Beyond Blue 1300 22 4636 · 13YARN 13 92 76 · Evolve Hub 02 4096 1100"""
 
 
-def is_configured() -> bool:
-    return bool(ENDPOINT and API_KEY)
+def _post(url: str, headers: dict, body: dict) -> str | None:
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": "application/json", **headers},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=_SSL_CTX) as r:
+            resp = json.loads(r.read())
+            return resp["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:
+        _log.warning("HTTP %s from %s: %s", e.code, url[:60], e.read().decode()[:200])
+    except Exception as ex:
+        _log.warning("Request failed: %s", ex)
+    return None
 
 
 def chat(messages: list[dict], risk_level: str = "low") -> str | None:
-    """
-    Call Azure OpenAI and return the assistant reply.
-    Returns None if Azure is not configured or the call fails.
-    """
-    if not is_configured():
-        return None
+    cfg = _env()
 
-    url = f"{ENDPOINT}/openai/deployments/{DEPLOYMENT}/chat/completions?api-version={API_VERSION}"
-
-    # Prepend system message
-    payload_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
-
-    # If high risk, add a system reminder
+    sys_msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
     if risk_level == "high":
-        payload_messages.append({
+        sys_msgs.append({
             "role": "system",
-            "content": "ALERT: The risk engine has flagged this conversation as HIGH RISK. Immediately surface crisis resources. Ask if the person is safe and whether anyone is with them. Do not attempt clinical intervention — your role is to hold space and connect them to emergency services or Lifeline.",
+            "content": (
+                "ALERT: HIGH RISK detected. The person has expressed suicidal thoughts. "
+                "Surface crisis resources. Check they are safe. Check if anyone is with them. "
+                "After they answer those questions, respond to what they specifically said — "
+                "do NOT keep repeating the crisis script. Hold space. Keep them talking."
+            ),
         })
 
-    body = json.dumps({
-        "messages": payload_messages,
-        "max_tokens": 200,
-        "temperature": 0.7,
-    }).encode("utf-8")
+    full_msgs = sys_msgs + messages
 
-    req = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Content-Type": "application/json",
-            "api-key": API_KEY,
-        },
-        method="POST",
-    )
+    # ── 1. OpenAI (gpt-5.5 or configured model) — best conversation quality ──
+    oai_key   = cfg["oai_key"]
+    oai_model = cfg["oai_model"]
+    if oai_key:
+        # gpt-5.x / o-series use max_completion_tokens; gpt-4.x use max_tokens
+        token_key = "max_completion_tokens" if any(
+            oai_model.startswith(p) for p in ("gpt-5", "o1", "o3", "o4")
+        ) else "max_tokens"
+        body: dict = {"model": oai_model, "messages": full_msgs, token_key: 200}
+        # gpt-5.x and o-series only support default temperature (1) — omit it
+        no_temp_models = ("o1", "o3", "o4", "gpt-5")
+        if not any(oai_model.startswith(p) for p in no_temp_models):
+            body["temperature"] = 0.82
+        reply = _post(
+            "https://api.openai.com/v1/chat/completions",
+            {"Authorization": f"Bearer {oai_key}"},
+            body,
+        )
+        if reply:
+            _log.info("OpenAI %s reply (%d chars)", oai_model, len(reply))
+            return reply
 
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read())
-            return data["choices"][0]["message"]["content"].strip()
-    except (urllib.error.URLError, KeyError, json.JSONDecodeError):
-        return None
+    # ── 2. Azure AI Services (gpt-oss-120b) — backup ─────────────────────────
+    endpoint = cfg["endpoint"]
+    key      = cfg["key"]
+    if endpoint and key:
+        dep = cfg["deployment"]
+        ver = cfg["api_ver"]
+        body = {"model": dep, "messages": full_msgs, "max_tokens": 200, "temperature": 0.8}
+
+        if "services.ai.azure.com" in endpoint:
+            reply = (
+                _post(f"{endpoint}/models/chat/completions?api-version={ver}",
+                      {"Authorization": f"Bearer {key}"}, body) or
+                _post(f"{endpoint}/models/chat/completions?api-version={ver}",
+                      {"api-key": key}, body)
+            )
+        elif "/v1" in endpoint:
+            reply = _post(f"{endpoint}/chat/completions",
+                          {"Authorization": f"Bearer {key}"}, body)
+        else:
+            body_no_model = {k: v for k, v in body.items() if k != "model"}
+            reply = _post(
+                f"{endpoint}/openai/deployments/{dep}/chat/completions?api-version={ver}",
+                {"api-key": key}, body_no_model,
+            )
+        if reply:
+            _log.info("Azure reply (%d chars)", len(reply))
+            return reply
+
+    _log.info("All AI providers unavailable — rule-based fallback")
+    return None
+
+
+def is_configured() -> bool:
+    cfg = _env()
+    return bool(cfg["oai_key"] or (cfg["endpoint"] and cfg["key"]))

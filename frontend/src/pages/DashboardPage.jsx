@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   BellRing,
   Clock3,
   Download,
   FileText,
-  Pencil,
   MapPin,
+  Pencil,
   TrendingUp,
   UsersRound,
   Zap,
@@ -27,9 +28,27 @@ import {
 } from "recharts";
 import { api, riskLabel, statusColumns } from "../lib/api.js";
 import ReferralDrawer from "../components/referral/ReferralDrawer.jsx";
+import LiveMonitor from "../components/dashboard/LiveMonitor.jsx";
 
-const RISK_COLORS = { low: "#95D5B2", medium: "#F4A261", high: "#E07A5F" };
+const RISK_COLORS  = { low: "#95D5B2", medium: "#F4A261", high: "#E07A5F" };
 const SOURCE_COLORS = ["#2D6A4F", "#4F7F6A", "#95D5B2", "#DDA15E", "#E07A5F", "#9B8AC4", "#6B7280", "#C8A96E"];
+
+// Role-based profile — controls what each staff member sees
+function getRoleProfile(staff) {
+  if (!staff) return { isCEO: true, showGrantTools: true, showEscalation: true, showRiskQueue: true, showVolunteers: true, eyebrow: "Staff dashboard" };
+  const role = staff.role.toLowerCase();
+  const isCEO       = role === "ceo";
+  const isCommunity = role.includes("community") || role.includes("fundraising");
+  return {
+    isCEO,
+    isCommunity,
+    showGrantTools:  isCEO,
+    showEscalation:  !isCommunity,
+    showRiskQueue:   !isCommunity,
+    showVolunteers:  isCEO || isCommunity,
+    eyebrow: isCEO ? "Executive overview" : isCommunity ? "Outreach & community" : "Staff dashboard",
+  };
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -47,7 +66,7 @@ function timeAgo(isoString) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ activeStaff }) {
   const [referrals, setReferrals] = useState([]);
   const [analytics, setAnalytics] = useState(null);
   const [staff, setStaff] = useState([]);
@@ -93,8 +112,13 @@ export default function DashboardPage() {
   const timelineData = analytics?.referrals_over_time || [];
   const responseData = analytics?.response_times || [];
 
+  const profile       = getRoleProfile(activeStaff);
   const highRiskCount = referrals.filter((r) => r.risk_level === "high").length;
   const openCount     = referrals.filter((r) => r.status === "new" || r.status === "assigned").length;
+  const myCases       = useMemo(
+    () => referrals.filter((r) => r.assigned_to === activeStaff?.id),
+    [referrals, activeStaff?.id]
+  );
   const activeColumn = statusColumns.find((col) => col.key === activeStatus) || statusColumns[0];
   const activeReferrals = referrals
     .filter((r) => r.status === activeStatus)
@@ -133,8 +157,8 @@ export default function DashboardPage() {
       {/* ── Dashboard header ── */}
       <div className="dashboard-head">
         <div>
-          <p className="eyebrow">Staff dashboard · LMNSPN Evolve Hub</p>
-          <h2>{greeting()}, Bradley</h2>
+          <p className="eyebrow">{profile.eyebrow} · LMNSPN Evolve Hub</p>
+          <h2>{greeting()}, {activeStaff?.name ?? "Bradley"}</h2>
           <p style={{ color: "var(--muted)", fontSize: "0.88rem", margin: "0.25rem 0 0" }}>
             {new Date().toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             {highRiskCount > 0 && (
@@ -145,14 +169,18 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="dashboard-actions">
-          <button className="quiet-button">
-            <FileText size={16} />
-            Grant report
-          </button>
-          <button className="primary-button" onClick={exportReport}>
-            <Download size={16} />
-            Export CSV
-          </button>
+          {profile.showGrantTools && (
+            <button className="quiet-button">
+              <FileText size={16} />
+              Grant report
+            </button>
+          )}
+          {profile.showGrantTools && (
+            <button className="primary-button" onClick={exportReport}>
+              <Download size={16} />
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
 
@@ -444,6 +472,20 @@ export default function DashboardPage() {
             <h3>Hunter Region referral map</h3>
           </div>
           <HunterHeatmap analytics={analytics} />
+        </section>
+
+        {/* Live conversation monitor */}
+        <section className="wide-panel" style={{ gridColumn: "span 4", padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "1.1rem 1.25rem 0.75rem", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: "0.6rem" }}>
+            <Activity size={18} style={{ color: "var(--green-mid)" }} />
+            <h3 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 700, fontSize: "1rem" }}>Live conversation monitor</h3>
+            <span className="muted" style={{ fontSize: "0.78rem", marginLeft: "0.25rem" }}>Staff-only · users see a clean chat</span>
+            <span className="system-pill" style={{ marginLeft: "auto", fontSize: "0.72rem" }}>
+              <span className="live-dot" />
+              Real-time risk analysis
+            </span>
+          </div>
+          <LiveMonitor activeStaff={activeStaff} />
         </section>
 
         {/* Volunteer roster */}
