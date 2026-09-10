@@ -4,6 +4,8 @@
 
 > **Core Principle:** PathFinder is a **triage and routing system**, not a therapy chatbot. The AI is the bridge to human support, not the destination.
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for a system overview.
+
 ---
 
 ## What is included
@@ -23,7 +25,7 @@
 | **Real-time staff notification** | ❌ | ❌ | ✅ (human) | ✅ (automated) |
 | **Local service matching** | ❌ | ❌ | ❌ | ✅ (14 programs) |
 | **Multi-channel escalation** | ❌ | ❌ | Internal | ✅ (email + push + SMS) |
-| **Voice + tone analysis** | ❌ | ❌ | ❌ | ✅ |
+| **Voice input + output** | ❌ | ❌ | ❌ | ✅ |
 | **Embedded in local workflow** | ❌ | ❌ | ❌ | ✅ |
 | **After-hours bridge** | ❌ | ❌ | ✅ (human) | ✅ (AI → staff) |
 
@@ -117,11 +119,11 @@ LAYER 5 (exit): On conversation end, display exit resources + schedule follow-up
 - **MEDIUM (0.36–0.71):** Hopelessness, isolation, general distress, risk factors
 - **LOW (<0.36):** Support-seeking, education requests, preventive care
 
-Risk scores use:
-- Crisis keyword detection (HIGH_RISK_PATTERNS, MEDIUM_RISK_PATTERNS)
+Risk scores are computed **locally in Python** (`backend/app/ai/risk_engine.py`) — no external LLM or API is in the scoring path, so risk assessment works even when every AI provider is unreachable. Signals:
+- Crisis keyword detection (`HIGH_RISK_KEYWORDS`, `MEDIUM_RISK_KEYWORDS`) — any single high-risk keyword forces a minimum HIGH score
 - Emotion analysis (sadness, fear, anger, hopelessness, stress, joy)
 - Urgency markers (immediate, urgent, today)
-- Sentiment analysis via Azure AI Language
+- Absolutist and farewell language markers
 
 ### Staff Assignment
 
@@ -157,7 +159,7 @@ Risk scores use:
 
 See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for:
 - Production server configuration
-- Azure OpenAI + Speech service setup
+- OpenAI and Azure AI Services setup (chat, transcription, TTS)
 - Database schema and migrations
 - Staff training requirements
 - On-call rotation implementation
@@ -167,7 +169,7 @@ See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for:
 
 ## Notes
 
-This prototype intentionally keeps the AI layer **local, transparent, and rule-based** — not a black-box LLM making clinical decisions. Risk assessment is keyword + sentiment based, with explicit escalation rules visible to staff.
+This prototype keeps the **safety-critical layer** — risk scoring and escalation — **local, transparent, and rule-based**, never delegated to a black-box LLM. The conversational reply layer uses an AI chain with automatic fallback: **OpenAI first, Azure AI Services second, and a rule-based responder last**, so the chatbot degrades gracefully instead of failing. Voice transcription and text-to-speech run on OpenAI (Whisper and TTS). Risk assessment and escalation rules stay independent of all of this and remain visible to staff.
 
 The system is designed to work with LMNSPN's existing human workflow, not replace it. An **on-call rotation is recommended** for after-hours escalations to be most effective.
 
@@ -176,7 +178,6 @@ The system is designed to work with LMNSPN's existing human workflow, not replac
 ## References
 
 - [NSW Mental Health Triage Policy (PD2012_053)](https://www.health.nsw.gov.au) — Risk tier definitions
-- [Stanford 2025 Study](https://example.com) — LLM limitations in crisis contexts
 - [Australian Commission on Safety & Quality in Health Care](https://www.safetyandquality.gov.au/) — Action 8.12 on preventable harm
 
 ---
