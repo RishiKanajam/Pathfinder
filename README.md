@@ -4,7 +4,7 @@
 
 > **Core Principle:** PathFinder is a **triage and routing system**, not a therapy chatbot. The AI is the bridge to human support, not the destination.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for a system overview.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for a system overview.
 
 ---
 
